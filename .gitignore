@@ -1,0 +1,25 @@
+.venv/
+venv/
+env/
+
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+.env
+
+.csv
+data/raw/
+
