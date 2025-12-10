@@ -58,19 +58,24 @@ Atrasos de voos custam **bilhões de dólares** anualmente para companhias aére
 ## 🚀 **Como Usar**
 
 ### **1. Instalação**
+No terminal execute os comandos:
 
-\`\`\`bash
+``` bash 
 # Clonar repositório
 git clone https://github.com/FlightOnTime/flight-delay-ds.git
 cd FlightOnTime
 
 # Instalar dependências
 pip install -r requirements.txt
-\`\`\`
+```
 
-### **2. Fazer Predições**
+### 2. Predição com o Modelo Treinado
 
-\`\`\`python
+Este exemplo demonstra como carregar o modelo treinado e realizar uma predição para um novo voo:
+
+#### 2.1. Código de Exemplo
+
+```python
 import joblib
 import pandas as pd
 
@@ -110,13 +115,14 @@ prediction = 'ATRASADO' if proba >= OPTIMAL_THRESHOLD else 'PONTUAL'
 
 print(f"Probabilidade de atraso: {proba*100:.1f}%")
 print(f"Predição: {prediction}")
-\`\`\`
+```
 
-**Saída esperada:**
-\`\`\`
+#### 2.2. Saída Esperada
+
+```
 Probabilidade de atraso: 45.2%
 Predição: ATRASADO
-\`\`\`
+```
 
 ---
 
