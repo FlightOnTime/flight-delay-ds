@@ -34,28 +34,24 @@ Atrasos de voos custam **bilhões de dólares** anualmente para companhias aére
 
 ---
 
-## 🗂️ **Estrutura do Repositório**
 
-\`\`\`
-FlightOnTime/
-├── README.md                          # Este arquivo
-├── FlightOnTime_MVP.ipynb             # Notebook principal (Colab)
-├── requirements.txt                   # Dependências Python
-├── models/
-│   ├── random_forest_full_model.pkl   # Modelo treinado (196 MB)
-│   ├── label_encoders.pkl             # Encoders categóricos
-│   └── optimal_threshold.txt          # Threshold otimizado (0.421)
-├── visualizations/
-│   ├── roc_curve.png                  # Curva ROC
-│   ├── precision_recall_curve.png     # Curva Precision-Recall
-│   ├── feature_importance.png         # Top 10 features
-│   ├── confusion_matrix.png           # Matriz de confusão
-│   └── models_comparison.png          # Comparação de modelos
-├── data/
-│   └── flight_data_with_features.parquet  # Dataset processado (186 MB)
-└── docs/
-    └── technical_report.md            # Relatório técnico detalhado
-\`\`\`
+**Descrição dos arquivos:**
+
+| Pasta | Arquivo | Descrição |
+|-------|---------|-----------|
+| **`/`** | `README.md` | Documentação principal do projeto |
+| **`/`** | `requirements.txt` | Dependências Python |
+| **`/`** | `FlightOnTime_MVP.ipynb` | Notebook principal (Colab) |
+| **`data/`** | `DOWNLOAD_DATA.md` | 📥 Links para download dos arquivos grandes |
+| **`data/`** | `*.parquet` | Datasets processados (186 MB + 101 MB) ⬇️ Google Drive |
+| **`models/`** | `random_forest_full_model.pkl` | Modelo Random Forest treinado (196 MB) ⬇️ Google Drive |
+| **`models/`** | `label_encoders.pkl` | Encoders para variáveis categóricas |
+| **`models/`** | `optional_threshold.txt` | Threshold otimizado (0.421) |
+| **`visualizations/`** | `*.png` | Gráficos de análise (ROC, Precision-Recall, Feature Importance, etc.) |
+| **`docs/`** | `technical_report.md` | Relatório técnico completo |
+
+> **⚠️ Atenção:** Arquivos marcados com ⬇️ devem ser baixados do Google Drive. Consulte [`data/DOWNLOAD_DATA.md`](./data/DOWNLOAD_DATA.md) para os links.
+
 
 ---
 
