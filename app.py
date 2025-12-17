@@ -2,12 +2,7 @@
 FlightOnTime API - Sistema de Predição de Atrasos de Voos
 Versão: 7.0
 """
-import json
-from pathlib import Path
 from typing import List, Optional
-
-import joblib
-import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -15,8 +10,7 @@ from pydantic import BaseModel, Field
 from src.model_utils import (load_encoders, load_feature_names, load_metadata,
                              load_model)
 # Importar módulos locais
-from src.preprocessing import (criar_features_historicas,
-                               criar_features_temporais)
+from src.preprocessing import (criar_features_temporais)
 from src.prescriptive_engine import gerar_output_prescritivo
 
 # ============================
@@ -51,7 +45,7 @@ print(f"✅ API inicializada! Threshold: {THRESHOLD:.4f}")
 class FlightInput(BaseModel):
     """
     Schema de entrada - Dados do voo para predição.
-    
+
     Formato JSON padrão (flexível para adaptação futura).
     Campos obrigatórios baseados nas features do modelo.
     """
@@ -59,20 +53,21 @@ class FlightInput(BaseModel):
     Airline: str = Field(..., example="AA", description="Código da companhia aérea (ex: AA, DL, UA)")
     Origin: str = Field(..., example="JFK", description="Aeroporto de origem (código IATA)")
     Dest: str = Field(..., example="LAX", description="Aeroporto de destino (código IATA)")
-    
+
     # Features temporais
     Month: int = Field(..., ge=1, le=12, example=12, description="Mês do voo (1-12)")
     DayOfWeek: int = Field(..., ge=1, le=7, example=2, description="Dia da semana (1=Segunda, 7=Domingo)")
     CRSDepTime: int = Field(..., ge=0, le=2359, example=1830, description="Hora programada de partida (HHMM)")
-    
+
     # Features numéricas
     Distance: int = Field(..., gt=0, example=2475, description="Distância do voo em milhas")
-    
+
     # Features históricas (opcionais - calculadas internamente se não fornecidas)
-    origin_delay_rate: Optional[float] = Field(None, example=0.21, description="Taxa histórica de atraso do aeroporto de origem")
+    origin_delay_rate: Optional[float] = Field(
+        None, example=0.21, description="Taxa histórica de atraso do aeroporto de origem")
     carrier_delay_rate: Optional[float] = Field(None, example=0.18, description="Taxa histórica de atraso da companhia")
     origin_traffic: Optional[int] = Field(None, example=150, description="Tráfego do aeroporto de origem")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -102,19 +97,19 @@ class PredictionOutput(BaseModel):
 def processar_features(flight_data: FlightInput) -> pd.DataFrame:
     """
     Processa dados de entrada e cria features necessárias.
-    
+
     Args:
         flight_data: Dados do voo (JSON)
-    
+
     Returns:
         DataFrame com features prontas para predição
     """
     # Converter para DataFrame
     df = pd.DataFrame([flight_data.dict()])
-    
+
     # Criar features temporais
     df = criar_features_temporais(df)
-    
+
     # Usar features históricas fornecidas ou valores padrão
     if flight_data.origin_delay_rate is None:
         df['origin_delay_rate'] = METADATA['metrics']['recall']  # Fallback: média global
@@ -122,22 +117,22 @@ def processar_features(flight_data: FlightInput) -> pd.DataFrame:
         df['carrier_delay_rate'] = METADATA['metrics']['recall']
     if flight_data.origin_traffic is None:
         df['origin_traffic'] = 100  # Valor padrão moderado
-    
+
     return df
 
 
 def aplicar_encoders(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica LabelEncoders nas features categóricas.
-    
+
     Args:
         df: DataFrame com features categóricas
-    
+
     Returns:
         DataFrame com features encoded
     """
     df_encoded = df.copy()
-    
+
     for col in FEATURE_NAMES["categoricas"]:
         if col in df_encoded.columns and col in ENCODERS:
             try:
@@ -152,7 +147,7 @@ def aplicar_encoders(df: pd.DataFrame) -> pd.DataFrame:
                     status_code=400,
                     detail=f"Erro ao encodar coluna '{col}': {str(e)}"
                 )
-    
+
     return df_encoded
 
 
@@ -206,27 +201,27 @@ def model_info():
 def predict(flight_data: FlightInput):
     """
     Endpoint principal - Predição de atraso com recomendações prescritivas.
-    
+
     Args:
         flight_data: Dados do voo (JSON)
-    
+
     Returns:
         Predição com probabilidade e recomendações
     """
     try:
         # 1. Processar features
         df = processar_features(flight_data)
-        
+
         # 2. Aplicar encoders
         df_encoded = aplicar_encoders(df)
-        
+
         # 3. Selecionar apenas features do modelo (na ordem correta)
         X = df_encoded[FEATURE_NAMES["todas"]]
-        
+
         # 4. Fazer predição
         y_proba = MODEL.predict_proba(X)[:, 1]  # Probabilidade da classe "Atrasado"
         y_pred = (y_proba >= THRESHOLD).astype(int)
-        
+
         # 5. Gerar output prescritivo
         output = gerar_output_prescritivo(
             y_pred=y_pred,
@@ -234,7 +229,7 @@ def predict(flight_data: FlightInput):
             feature_importance_dict=FEATURE_IMPORTANCE,
             top_n=3
         )[0]  # Pegar primeira predição (batch size = 1)
-        
+
         # 6. Formatar resposta
         return PredictionOutput(
             previsao=output["previsao"],
@@ -243,7 +238,7 @@ def predict(flight_data: FlightInput):
             principais_fatores=output["principais_fatores"],
             recomendacoes=output["recomendacoes"]
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -255,10 +250,10 @@ def predict(flight_data: FlightInput):
 def predict_batch(flights: List[FlightInput]):
     """
     Predição em lote - Processa múltiplos voos de uma vez.
-    
+
     Args:
         flights: Lista de dados de voos
-    
+
     Returns:
         Lista de predições
     """
@@ -267,9 +262,9 @@ def predict_batch(flights: List[FlightInput]):
         for flight in flights:
             result = predict(flight)
             results.append(result.dict())
-        
+
         return {"predictions": results, "total": len(results)}
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
