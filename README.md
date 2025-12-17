@@ -1,258 +1,464 @@
-# ✈️ FlightOnTime - Predição de Atrasos de Voos
+# ✈️ FlightOnTime - Sistema de Predição de Atrasos de Voos
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-[![Scikit-learn](https://img.shields.io/badge/Scikit--learn-1.3+-orange.svg)](https://scikit-learn.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)
+![Scikit-learn](https://img.shields.io/badge/Scikit--learn-1.5.3-orange?logo=scikit-learn&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115.6-009688?logo=fastapi&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-> Sistema de Machine Learning para prever atrasos de voos domésticos nos EUA usando dados históricos de 2023-2024.
+**Sistema de Machine Learning para prever atrasos de voos domésticos nos EUA usando dados históricos de 2023-2024**
 
----
-
-## 📊 **Visão Geral do Projeto**
-
-**FlightOnTime** é um modelo preditivo que analisa **11.4 milhões de voos** e prevê atrasos com **66.3% de ROC-AUC** e **64.1% de Recall**, permitindo que passageiros e companhias aéreas se preparem para possíveis atrasos.
-
-### **Principais Resultados**
-- ✅ **ROC-AUC: 0.663** - Boa capacidade de discriminação
-- ✅ **Recall: 64.1%** - Detecta 2 em cada 3 voos atrasados
-- ✅ **F1-Score: 0.344** - Equilíbrio entre precisão e cobertura
-- ✅ **Dataset: 11.4M voos** - 2 anos de dados (2023-2024)
-- ✅ **16 features** - Engenharia de features sem data leakage
+[Documentação API](#-api-rest-fastapi) • [Instalação](#-instalação) • [Uso](#-uso-rápido) • [Métricas](#-métricas-do-modelo) • [Arquitetura](#-arquitetura)
 
 ---
 
-## 🎯 **Problema de Negócio**
+## 📋 Índice
 
-Atrasos de voos custam **bilhões de dólares** anualmente para companhias aéreas e passageiros:
-- 💰 **US$ 33 bilhões/ano** em custos para a indústria (FAA, 2023)
-- ⏱️ **~20% dos voos** atrasam mais de 15 minutos
-- 😤 **Frustração de passageiros** e perda de conexões
-
-**Solução**: Prever atrasos com antecedência para:
-- ✈️ Companhias: Realocar recursos e otimizar operações
-- 👥 Passageiros: Planejar melhor e evitar conexões arriscadas
-
----
-
-
-**Descrição dos arquivos:**
-
-| Pasta | Arquivo | Descrição |
-|-------|---------|-----------|
-| **`/`** | `README.md` | Documentação principal do projeto |
-| **`/`** | `requirements.txt` | Dependências Python |
-| **`/`** | `FlightOnTime_MVP.ipynb` | Notebook principal (Colab) |
-| **`data/`** | `DOWNLOAD_DATA.md` | 📥 Links para download dos arquivos grandes |
-| **`data/`** | `*.parquet` | Datasets processados (186 MB + 101 MB) ⬇️ Google Drive |
-| **`models/`** | `random_forest_full_model.pkl` | Modelo Random Forest treinado (196 MB) ⬇️ Google Drive |
-| **`models/`** | `label_encoders.pkl` | Encoders para variáveis categóricas |
-| **`models/`** | `optional_threshold.txt` | Threshold otimizado (0.421) |
-| **`visualizations/`** | `*.png` | Gráficos de análise (ROC, Precision-Recall, Feature Importance, etc.) |
-| **`docs/`** | `technical_report.md` | Relatório técnico completo |
-
-> **⚠️ Atenção:** Arquivos marcados com ⬇️ devem ser baixados do Google Drive. Consulte [`data/DOWNLOAD_DATA.md`](./data/DOWNLOAD_DATA.md) para os links.
-
+- [Visão Geral](#-visão-geral)
+- [Características](#-características)
+- [Arquitetura](#-arquitetura)
+- [Instalação](#-instalação)
+- [Uso Rápido](#-uso-rápido)
+- [Endpoints da API](#-endpoints-da-api)
+- [Estrutura do Projeto](#-estrutura-do-projeto)
+- [Métricas do Modelo](#-métricas-do-modelo)
+- [Metodologia](#-metodologia)
+- [Contribuindo](#-contribuindo)
 
 ---
 
-## 🚀 **Como Usar**
+## 🎯 Visão Geral
 
-### **1. Instalação**
-No terminal execute os comandos:
+**FlightOnTime** é um sistema inteligente de predição de atrasos de voos baseado em **Machine Learning**, desenvolvido para companhias aéreas tomarem decisões operacionais **pré-voo** com alta sensibilidade (Recall 94.3%).
 
-``` bash 
-# Clonar repositório
+### Perspectiva Adotada
+
+- **Cliente**: Companhia Aérea (decisões operacionais)
+- **Objetivo**: Prever se um voo atrasará ≥15 minutos
+- **Métrica Primária**: ROC-AUC maximizado (0.6252) com validação temporal
+- **Output**: Predições prescritivas com recomendações acionáveis
+
+### Diferenciais
+
+✅ **Sem Data Leakage**: Split temporal explícito + features históricas com `shift(1)`  
+✅ **Otimização por Custo**: Threshold ajustado para minimizar custos operacionais (FN=$500, FP=$50)  
+✅ **Output Prescritivo**: Recomendações automáticas baseadas em [Mosqueira et al. (2024)](https://www.sciencedirect.com/science/article/pii/S0957417423036849)  
+✅ **API REST**: FastAPI pronta para integração com Backend Java  
+✅ **Reprodutibilidade 100%**: `RANDOM_STATE=42` + seeds fixos
+
+---
+
+## ⚡ Características
+
+### Modelo de Machine Learning
+
+- **Algoritmo**: Random Forest Classifier (50 estimators)
+- **Features**: 13 variáveis (9 numéricas + 4 categóricas)
+- **Dataset**: 14.6M voos (2023-2024) do Bureau of Transportation Statistics (BTS)
+- **Validação**: TimeSeriesSplit (3 folds) para garantir robustez temporal
+
+### Engenharia de Features
+
+| Tipo | Features | Descrição |
+|------|----------|-----------|
+| **Temporais** | `dephour`, `is_weekend`, `quarter`, `time_of_day` | Padrões de horário e sazonalidade |
+| **Históricas** | `origin_delay_rate`, `carrier_delay_rate`, `origin_traffic` | Taxa de atraso histórica (com shift temporal) |
+| **Geográficas** | `Origin`, `Dest`, `Distance` | Rotas e distâncias |
+| **Operacionais** | `Airline`, `Month`, `DayOfWeek` | Companhia e calendário |
+
+### API REST (FastAPI)
+
+- **Endpoint Principal**: `POST /predict` - Predição individual
+- **Batch Processing**: `POST /predict/batch` - Múltiplos voos
+- **Health Check**: `GET /health` - Status da API
+- **Documentação**: Swagger UI automático em `/docs`
+
+---
+
+## 🗺️ Arquitetura
+
+```mermaid
+graph LR
+    A[Dados BTS<br/>2023-2024] --> B[Notebook<br/>Feature Engineering]
+    B --> C[Random Forest<br/>Trained Model]
+    C --> D[FastAPI<br/>REST API]
+    D --> E[Backend Java<br/>Integração]
+    E --> F[Usuários<br/>Companhias Aéreas]
+    
+    style A fill:#e1f5ff
+    style C fill:#fff4e1
+    style D fill:#e8f5e9
+    style F fill:#f3e5f5
+```
+
+### Fluxo de Dados
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
+│  Ingestão   │───▶│ Pré-processa │───▶│ Treinamento │───▶│  Inferência  │
+│ (BTS 1.45GB)│    │   mento      │    │ (RF + opt)  │    │  (FastAPI)   │
+└─────────────┘    └──────────────┘    └─────────────┘    └──────────────┘
+```
+
+1. **Ingestão**: Download automático de 1.45GB do BTS via Google Drive
+2. **Pré-processamento**: Engenharia de features + downcast de memória (redução de 50%)
+3. **Treinamento**: Random Forest com otimização de threshold por custo
+4. **Inferência**: API recebe JSON → processa features → retorna predição prescritiva
+
+---
+
+## 📦 Instalação
+
+### Pré-requisitos
+
+- Python 3.11+ 
+- pip (gerenciador de pacotes)
+- 4GB RAM mínimo (16GB recomendado para treinamento)
+
+### Passo 1: Clonar Repositório
+
+```bash
 git clone https://github.com/FlightOnTime/flight-delay-ds.git
-cd FlightOnTime
+cd flight-delay-ds
+```
 
-# Instalar dependências
+### Passo 2: Criar Ambiente Virtual (Recomendado)
+
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Linux/Mac
+python -m venv venv
+source venv/bin/activate
+```
+
+### Passo 3: Instalar Dependências
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Predição com o Modelo Treinado
+### Passo 4: Baixar Modelo Pré-treinado
 
-Este exemplo demonstra como carregar o modelo treinado e realizar uma predição para um novo voo:
+**Opção A**: [Download direto do Google Drive](https://drive.google.com/file/d/1qMAEmX5FEHpc24mWkH2BVz9H4FuwMxt5/view?usp=drive_link)
 
-#### 2.1. Código de Exemplo
+**Opção B**: Via gdown
+
+```bash
+pip install gdown
+gdown 1qMAEmX5FEHpc24mWkH2BVz9H4FuwMxt5 -O models/randomforest_v7_final.pkl
+```
+
+---
+
+## 🚀 Uso Rápido
+
+### 1. API REST (FastAPI)
+
+#### Iniciar Servidor
+
+```bash
+# Desenvolvimento (com auto-reload)
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+
+# Produção
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+#### Fazer Predição
+
+**Via curl:**
+
+```bash
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Airline": "AA",
+    "Origin": "JFK",
+    "Dest": "LAX",
+    "Month": 12,
+    "DayOfWeek": 2,
+    "CRSDepTime": 1830,
+    "Distance": 2475
+  }'
+```
+
+**Via Python:**
 
 ```python
-import joblib
-import pandas as pd
+import requests
 
-# Carregar modelo e encoders
-model = joblib.load('models/random_forest_full_model.pkl')
-encoders = joblib.load('models/label_encoders.pkl')
+response = requests.post(
+    "http://localhost:8000/predict",
+    json={
+        "Airline": "AA",
+        "Origin": "JFK",
+        "Dest": "LAX",
+        "Month": 12,
+        "DayOfWeek": 2,
+        "CRSDepTime": 1830,
+        "Distance": 2475
+    }
+)
 
-# Threshold otimizado
-OPTIMAL_THRESHOLD = 0.421
-
-# Dados de exemplo (novo voo)
-new_flight = pd.DataFrame({
-    'carrier': ['AA'],
-    'Origin': ['JFK'],
-    'Dest': ['LAX'],
-    'dep_hour': [18],
-    'DAY_OF_WEEK': [5],
-    'is_weekend': [0],
-    'MONTH': [12],
-    'quarter': [4],
-    'time_of_day': ['Evening'],
-    'DISTANCE': [2475],
-    'distance_category': ['Long'],
-    'route_frequency': [1500],
-    'origin_delay_rate': [0.25],
-    'origin_traffic': [50000],
-    'carrier_delay_rate': [0.22]
-})
-
-# Aplicar encoding
-for col in ['carrier', 'Origin', 'Dest', 'time_of_day', 'distance_category']:
-    new_flight[col] = encoders[col].transform(new_flight[col])
-
-# Predição
-proba = model.predict_proba(new_flight)[0, 1]
-prediction = 'ATRASADO' if proba >= OPTIMAL_THRESHOLD else 'PONTUAL'
-
-print(f"Probabilidade de atraso: {proba*100:.1f}%")
-print(f"Predição: {prediction}")
+print(response.json())
 ```
 
-#### 2.2. Saída Esperada
+**Resposta:**
 
+```json
+{
+  "previsao": "Atrasado",
+  "probabilidade_atraso": 0.558,
+  "confianca": "Moderada",
+  "principais_fatores": [
+    "dephour: 27.3% de importância",
+    "carrier_delay_rate: 14.1% de importância",
+    "time_of_day: 13.5% de importância"
+  ],
+  "recomendacoes": [
+    "⚠️ Reclassificar voo como potencialmente atrasado",
+    "📢 Notificar passageiros com conexões (>2h)",
+    "🎯 Antecipar boarding em 10-15 minutos",
+    "🚪 Reservar gate alternativo",
+    "🔧 Realizar pré-voo com margem de tempo"
+  ]
+}
 ```
-Probabilidade de atraso: 45.2%
-Predição: ATRASADO
+
+#### Documentação Interativa
+
+Acesse `http://localhost:8000/docs` para testar a API via interface Swagger UI.
+
+---
+
+### 2. Notebook Jupyter
+
+```bash
+# Iniciar Jupyter
+jupyter notebook notebooks/FlightOnTime.ipynb
+
+# Ou usar VS Code com extensão Jupyter
+code notebooks/FlightOnTime.ipynb
+```
+
+**Seções do Notebook:**
+
+1. ✅ **Setup Inicial**: Configurações globais e imports
+2. ✅ **Carregamento de Dados**: Download automático do BTS
+3. ✅ **EDA**: 8+ visualizações exploratórias
+4. ✅ **Feature Engineering**: 16 features sem data leakage
+5. ✅ **Modelagem**: Logistic Regression + Random Forest
+6. ✅ **Otimização**: Threshold baseado em custo
+7. ✅ **Validação**: TimeSeriesSplit (3 folds)
+8. ✅ **Export**: Modelo + encoders + metadata
+
+---
+
+## 📡 Endpoints da API
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `GET` | `/` | Informações da API |
+| `GET` | `/health` | Health check |
+| `GET` | `/model/info` | Métricas e metadados do modelo |
+| `POST` | `/predict` | Predição individual |
+| `POST` | `/predict/batch` | Predição em lote |
+
+### Exemplo: Informações do Modelo
+
+```bash
+curl http://localhost:8000/model/info
+```
+
+**Resposta:**
+
+```json
+{
+  "version": "7.0",
+  "timestamp": "2025-12-16 20:51:46",
+  "metrics": {
+    "roc_auc": 0.6252,
+    "recall": 0.9428,
+    "precision": 0.1776,
+    "f1": 0.2989,
+    "accuracy": 0.2762
+  },
+  "business_metrics": {
+    "total_cost_usd": 117903300,
+    "roi_annual_usd": 237177000
+  },
+  "optimal_threshold": 0.2444,
+  "features": {
+    "total": 13,
+    "numericas": ["Month", "DayOfWeek", "dephour", "..."],
+    "categoricas": ["Airline", "Origin", "Dest", "time_of_day"]
+  }
+}
 ```
 
 ---
 
-## 📊 **Metodologia**
+## 📂 Estrutura do Projeto
 
-### **1. Coleta de Dados**
-- **Fonte**: [Bureau of Transportation Statistics (BTS)](https://www.transtats.bts.gov/)
-- **Período**: Janeiro 2023 - Dezembro 2024
-- **Volume**: 11.4 milhões de voos
-- **Cobertura**: 53 aeroportos e 10 companhias principais
-
-### **2. Feature Engineering**
-Criamos **16 features preditivas** sem data leakage:
-
-| Categoria | Features |
-|-----------|----------|
-| **Temporais** | dep_hour, DAY_OF_WEEK, is_weekend, MONTH, quarter, time_of_day |
-| **Rotas** | route, route_frequency, DISTANCE, distance_category |
-| **Aeroportos** | Origin, Dest, origin_delay_rate, origin_traffic |
-| **Companhias** | carrier, carrier_delay_rate |
-
-**Destaques**:
-- ✅ **Rolling window de 7 dias** para taxas históricas
-- ✅ **Split temporal** (80% treino, 20% teste)
-- ✅ **Nenhuma informação futura** usada
-
-### **3. Modelagem**
-- **Algoritmo**: Random Forest (100 árvores)
-- **Tratamento de desbalanceamento**: `class_weight='balanced'`
-- **Otimização de threshold**: 0.421 (vs 0.50 padrão)
-- **Dados de treino**: 9.1M voos
-- **Tempo de treino**: 35 minutos
+```
+flight-delay-ds/
+├── 📁 data/                      # Dados brutos (BTS 2023-2024)
+├── 📁 models/                    # Modelos treinados e artefatos
+│   ├── randomforest_v7_final.pkl
+│   ├── label_encoders_v7.pkl
+│   ├── metadata_v7.json
+│   ├── feature_names_v7.json
+│   └── optimal_threshold_v7.txt
+├── 📁 notebooks/                 # Jupyter Notebooks
+│   └── FlightOnTime.ipynb    # Notebook principal
+├── 📁 src/                       # Código-fonte modular
+│   ├── __init__.py
+│   ├── preprocessing.py         # Feature engineering
+│   ├── prescriptive_engine.py   # Lógica prescritiva
+│   └── model_utils.py           # Carregamento de artefatos
+├── 📁 tests/                     # Testes unitários (futura sprint)
+├── 📁 reports/                   # Relatórios e visualizações
+├── 📄 app.py                     # API FastAPI
+├── 📄 requirements.txt           # Dependências Python
+├── 📄 README.md                  # Este arquivo
+└── 📄 .gitignore                 # Arquivos ignorados pelo Git
+```
 
 ---
 
-## 📈 **Resultados**
+## 📊 Métricas do Modelo
 
-### **Métricas Finais**
+### Desempenho Técnico (Teste Set = 2.9M voos)
 
 | Métrica | Valor | Interpretação |
 |---------|-------|---------------|
-| **ROC-AUC** | 0.663 | Boa discriminação entre classes |
-| **Accuracy** | 60.2% | 6 em 10 predições corretas |
-| **Precision** | 23.5% | 1 em 4 alertas é verdadeiro |
-| **Recall** | 64.1% | Detecta 64% dos atrasos reais |
-| **F1-Score** | 0.344 | Equilíbrio precision-recall |
+| **ROC-AUC** | 0.6252 | Capacidade de discriminação acima do aleatório |
+| **Recall** | 94.28% | Detecta 94% dos atrasos reais (prioridade para FN) |
+| **Precision** | 17.76% | 1 em 6 alarmes é verdadeiro (trade-off aceitável) |
+| **F1-Score** | 0.2989 | Balanceamento Precision-Recall |
+| **Accuracy** | 27.62% | Não é métrica relevante (dataset desbalanceado) |
 
-### **Matriz de Confusão**
+### Métricas de Negócio
 
-|  | Predito Pontual | Predito Atrasado |
-|---|-----------------|------------------|
-| **Real Pontual** | 1,134,451 (59.4%) | 775,326 (40.6%) |
-| **Real Atrasado** | 133,393 (35.9%) | 238,457 (64.1%) |
+| Métrica | Valor | Descrição |
+|---------|-------|-----------|
+| **Custo Total** | $117.9M/ano | FN + FP costs |
+| **ROI Anual** | $237.2M/ano | Retorno esperado com ações prescritivas |
+| **True Positives** | 450,293 | Atrasos detectados corretamente |
+| **False Negatives** | 27,304 | Atrasos não detectados (custo: $13.7M) |
 
-**Interpretação**:
-- ✅ **238k atrasos detectados** (True Positives)
-- ⚠️ **133k atrasos perdidos** (False Negatives)
-- ⚠️ **775k falsos alarmes** (False Positives)
+### Validação Temporal (Cross-Validation)
 
----
-
-## 🔍 **Features Mais Importantes**
-
-As **3 features mais impactantes** no modelo:
-
-1. **dep_hour (29.1%)** - Hora da partida
-   - Voos noturnos/madrugada têm maior risco
-   
-2. **carrier_delay_rate (15.3%)** - Histórico da companhia
-   - Companhias com histórico ruim tendem a atrasar mais
-   
-3. **time_of_day (14.4%)** - Período do dia
-   - Tarde/noite têm efeito cascata de atrasos
-
-![Feature Importance](visualizations/feature_importance.png)
+```
+TimeSeriesSplit (3 folds):
+- CV ROC-AUC Mean: 0.6964 ± 0.0023
+- Confirma estabilidade temporal do modelo
+```
 
 ---
 
-## 🎯 **Limitações e Trabalhos Futuros**
+## 🔬 Metodologia
 
-### **Limitações**
-- ⚠️ **Precision baixa (23.5%)**: Muitos falsos alarmes
-- ⚠️ **Sem dados climáticos em tempo real**: Limitado a dados históricos
-- ⚠️ **Threshold fixo**: Não adapta por contexto (feriados, eventos)
+### Prevenção de Data Leakage
 
-### **Próximos Passos**
-- 🔧 **Adicionar features climáticas** (API em tempo real)
-- 🔧 **Ensemble de modelos** (XGBoost, LightGBM)
-- 🔧 **Deploy em API REST** (FastAPI + Docker)
-- 🔧 **Dashboard interativo** (Streamlit)
-- 🔧 **Explicabilidade** (SHAP values para cada predição)
+**Estratégias Implementadas:**
 
----
+1. **Split Temporal Explícito**: 80% treino (2023) / 20% teste (2024)
+2. **Features Históricas com Shift**: `.shift(1).expanding().mean()` para evitar lookahead
+3. **Dataset Ordenado**: Por `FlightDate` antes de qualquer agregação
+4. **Validação TimeSeriesSplit**: 3 folds com ordem cronológica preservada
 
-## 🛠️ **Tecnologias Utilizadas**
+### Otimização de Threshold
 
-- **Python 3.8+** - Linguagem principal
-- **Pandas** - Manipulação de dados
-- **Scikit-learn** - Machine Learning
-- **Matplotlib/Seaborn** - Visualizações
-- **Joblib** - Serialização do modelo
-- **Google Colab** - Ambiente de desenvolvimento
+Threshold padrão (0.50) → **Threshold otimizado (0.2444)**
 
----
+**Justificativa:**
 
-## 📚 **Referências**
+- **Custo FN** (não detectar atraso): $500/voo (custos operacionais + passageiros)
+- **Custo FP** (falso alarme): $50/voo (preparações desnecessárias)
+- **Ratio**: FN é 10x mais caro que FP → modelo prioriza Recall
 
-- [Bureau of Transportation Statistics](https://www.transtats.bts.gov/)
-- [FAA Flight Delay Data](https://www.faa.gov/data_research/)
-- [Scikit-learn Documentation](https://scikit-learn.org/stable/documentation.html)
+**Algoritmo:**
 
----
+```python
+# Para cada threshold t em [0.1, 0.2, ..., 0.9]:
+cost(t) = count(FN) × $500 + count(FP) × $50
+threshold_otimo = argmin(cost(t))
+```
 
-## 👨‍💻 **Autor**
+### Referências Científicas
 
-Desenvolvido por **[H12-25-B-Equipo 15-Data Science]**
+Este projeto implementa práticas de:
+
+- **Mosqueira-Rey et al. (2024)**: "Towards an Understanding of Machine Learning Models for Flight Delay Prediction" - Análise de 78% da literatura sobre features de atraso de voos
+- **Sklearn Pipeline**: Modularização e reprodutibilidade
+- **ISO 25010**: Qualidade de software para sistemas de ML
 
 ---
 
-## 📄 **Licença**
+## 🛠️ Desenvolvimento
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+### Instalar em Modo Desenvolvimento
+
+```bash
+pip install -r requirements.txt
+pip install -e .  # Instala pacote local como editável
+```
+
+### Rodar Testes (Futura Sprint)
+
+```bash
+pytest tests/ -v
+```
+
+### Adicionar Nova Feature
+
+1. Editar `src/preprocessing.py`
+2. Retreinar modelo no notebook
+3. Atualizar `feature_names_v7.json`
+4. Testar API com novos dados
 
 ---
 
-## 🙏 **Agradecimentos**
+## 🤝 Contribuindo
 
-- Bureau of Transportation Statistics pelo dataset público
-- Comunidade Kaggle por inspiração em projetos similares
+### Branch Strategy
+
+- `main`: Código estável em produção
+- `feature/*`: Novas funcionalidades
+- `hotfix/*`: Correções urgentes
+
+### Pull Request Checklist
+
+- [ ] Código segue PEP 8
+- [ ] Testes passam (quando implementados)
+- [ ] Documentação atualizada
+- [ ] Commit messages descritivos
 
 ---
 
-**⭐ Se este projeto foi útil, considere dar uma estrela no GitHub!**
+## 📄 License
+
+MIT License - veja [LICENSE](LICENSE) para detalhes.
+
+---
+
+## 👥 Time
+
+**H12-25-B-Equipo 15-Data Science**
+
+---
+
+## 📞 Contato
+
+- **Repositório**: [github.com/FlightOnTime/flight-delay-ds](https://github.com/FlightOnTime/flight-delay-ds)
+- **Issues**: [github.com/FlightOnTime/flight-delay-ds/issues](https://github.com/FlightOnTime/flight-delay-ds/issues)
+- **API Backend**: [github.com/FlightOnTime/flight-delay-api](https://github.com/FlightOnTime/flight-delay-api)
+
+---
+
+**⭐ Se este projeto foi útil, deixe uma estrela no GitHub!**
+
+Made with ❤️ by FlightOnTime Team
