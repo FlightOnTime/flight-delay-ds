@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: FlightOnTime API
+  description: API de Predição de Atrasos de Voos com Recomendações Prescritivas
+  version: '7.0'
+paths:
+  /:
+    get:
+      summary: Root
+      description: Endpoint raiz - Informações da API
+      operationId: root__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /v1/health:
+    get:
+      summary: Health Check
+      description: Health check - Verifica se a API está funcionando
+      operationId: health_check_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /health:
+    get:
+      summary: Health Check
+      description: Health check - Verifica se a API está funcionando
+      operationId: health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /model/info:
+    get:
+      summary: Model Info
+      description: Retorna informações do modelo treinado
+      operationId: model_info_model_info_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /predict:
+    post:
+      summary: Predict
+      description: "Endpoint principal - Predição de atraso com recomendações prescritivas.\n\
+        \nArgs:\n    flight_data: Dados do voo (JSON)\n\nReturns:\n    Predição com\
+        \ probabilidade e recomendações"
+      operationId: predict_predict_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightInput'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictionOutput'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /predict/batch:
+    post:
+      summary: Predict Batch
+      description: "Predição em lote - Processa múltiplos voos de uma vez.\n\nArgs:\n\
+        \    flights: Lista de dados de voos\n\nReturns:\n    Lista de predições"
+      operationId: predict_batch_predict_batch_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              items:
+                $ref: '#/components/schemas/FlightInput'
+              type: array
+              title: Flights
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    FlightInput:
+      properties:
+        Airline:
+          type: string
+          title: Airline
+          description: 'Código da companhia aérea (ex: AA, DL, UA)'
+          example: AA
+        Origin:
+          type: string
+          title: Origin
+          description: Aeroporto de origem (código IATA)
+          example: JFK
+        Dest:
+          type: string
+          title: Dest
+          description: Aeroporto de destino (código IATA)
+          example: LAX
+        Month:
+          type: integer
+          maximum: 12.0
+          minimum: 1.0
+          title: Month
+          description: Mês do voo (1-12)
+          example: 12
+        DayOfWeek:
+          type: integer
+          maximum: 7.0
+          minimum: 1.0
+          title: Dayofweek
+          description: Dia da semana (1=Segunda, 7=Domingo)
+          example: 2
+        CRSDepTime:
+          type: integer
+          maximum: 2359.0
+          minimum: 0.0
+          title: Crsdeptime
+          description: Hora programada de partida (HHMM)
+          example: 1830
+        Distance:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Distance
+          description: Distância do voo em milhas
+          example: 2475
+        origin_delay_rate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Origin Delay Rate
+          description: Taxa histórica de atraso do aeroporto de origem
+          example: 0.21
+        carrier_delay_rate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Carrier Delay Rate
+          description: Taxa histórica de atraso da companhia
+          example: 0.18
+        origin_traffic:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Origin Traffic
+          description: Tráfego do aeroporto de origem
+          example: 150
+      type: object
+      required:
+      - Airline
+      - Origin
+      - Dest
+      - Month
+      - DayOfWeek
+      - CRSDepTime
+      - Distance
+      title: FlightInput
+      description: 'Schema de entrada - Dados do voo para predição.
+
+
+        Formato JSON padrão (flexível para adaptação futura).
+
+        Campos obrigatórios baseados nas features do modelo.'
+      example:
+        Airline: AA
+        CRSDepTime: 1830
+        DayOfWeek: 2
+        Dest: LAX
+        Distance: 2475
+        Month: 12
+        Origin: JFK
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    PredictionOutput:
+      properties:
+        previsao:
+          type: string
+          title: Previsao
+          description: '''Atrasado'' ou ''Pontual'''
+        probabilidade_atraso:
+          type: number
+          title: Probabilidade Atraso
+          description: Probabilidade de atraso (0.0 - 1.0)
+        confianca:
+          type: string
+          title: Confianca
+          description: '''Muito Alta'', ''Alta'', ''Moderada'' ou ''Baixa'''
+        principais_fatores:
+          items:
+            type: string
+          type: array
+          title: Principais Fatores
+          description: Top 3 features mais importantes
+        recomendacoes:
+          items:
+            type: string
+          type: array
+          title: Recomendacoes
+          description: Ações operacionais recomendadas
+      type: object
+      required:
+      - previsao
+      - probabilidade_atraso
+      - confianca
+      - principais_fatores
+      - recomendacoes
+      title: PredictionOutput
+      description: Schema de saída - Predição com recomendações prescritivas
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
