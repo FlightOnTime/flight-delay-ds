@@ -39,15 +39,14 @@ try:
     if isinstance(encoders, dict) and 'Origin' in encoders:
         # Pega as classes do encoder de Origem
         valid_airports = sorted(encoders['Origin'].classes_.tolist())
-        
+
         # Salvar em JSON
         airports_data = {
             "valid_airports": valid_airports,
             "total_count": len(valid_airports),
             "last_updated": "2025-12-18",
             "source": "label_encoders_v7.pkl",
-            "note": "Lista de 362 códigos IATA únicos usados no treinamento do modelo"
-        }
+            "note": "Lista de 362 códigos IATA únicos usados no treinamento do modelo"}
 
         output_path = 'docs/valid_airports.json'
         with open(output_path, 'w') as f:

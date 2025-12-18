@@ -43,7 +43,8 @@ def load_encoders(encoder_path: str = "models/label_encoders_v7.pkl"):
     return encoders
 
 
-def load_metadata(metadata_path: str = "models/metadata_v7.json") -> Dict[str, Any]:
+def load_metadata(
+        metadata_path: str = "models/metadata_v7.json") -> Dict[str, Any]:
     """
     Carrega metadados do modelo usando caminho absoluto.
     """
@@ -59,14 +60,16 @@ def load_metadata(metadata_path: str = "models/metadata_v7.json") -> Dict[str, A
     return metadata
 
 
-def load_feature_names(feature_path: str = "models/feature_names_v7.json") -> Dict[str, list]:
+def load_feature_names(
+        feature_path: str = "models/feature_names_v7.json") -> Dict[str, list]:
     """
     Carrega lista de features do modelo usando caminho absoluto.
     """
     absolute_path = BASE_DIR / feature_path
 
     if not absolute_path.exists():
-        raise FileNotFoundError(f"❌ Feature names não encontrado: {absolute_path}")
+        raise FileNotFoundError(
+            f"❌ Feature names não encontrado: {absolute_path}")
 
     with open(absolute_path, 'r') as f:
         features = json.load(f)

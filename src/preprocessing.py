@@ -23,20 +23,24 @@ def downcast_dataframe(df):
 
         if col_type == 'int64':
             c_min, c_max = df[col].min(), df[col].max()
-            if c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+            if c_min > np.iinfo(
+                    np.int32).min and c_max < np.iinfo(
+                    np.int32).max:
                 df[col] = df[col].astype(np.int32)
             elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
                 df[col] = df[col].astype(np.int16)
 
         elif col_type == 'float64':
             c_min, c_max = df[col].min(), df[col].max()
-            if c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+            if c_min > np.finfo(
+                    np.float32).min and c_max < np.finfo(
+                    np.float32).max:
                 df[col] = df[col].astype(np.float32)
 
     end_memory = df.memory_usage(deep=True).sum() / 1024**2
     reduction_pct = (1 - end_memory / start_memory) * 100
 
-    print(f"📊 Otimização de Memória:")
+    print("📊 Otimização de Memória:")
     print(f"  - Antes: {start_memory:.2f} MB")
     print(f"  - Depois: {end_memory:.2f} MB")
     print(f"  - Redução: {reduction_pct:.1f}%")
@@ -63,7 +67,11 @@ def criar_features_temporais(df):
     df_feat = df.copy()
 
     # Feature 1: Hora da partida
-    df_feat['dephour'] = (df_feat['CRSDepTime'] // 100).clip(0, 23).astype('int8')
+    df_feat['dephour'] = (
+        df_feat['CRSDepTime'] //
+        100).clip(
+        0,
+        23).astype('int8')
 
     # Feature 2: Fim de semana (6=Saturday, 7=Sunday)
     df_feat['is_weekend'] = df_feat['DayOfWeek'].isin([6, 7]).astype('int8')
@@ -82,9 +90,11 @@ def criar_features_temporais(df):
         else:
             return 'Night (10pm-6am)'
 
-    df_feat['time_of_day'] = df_feat['dephour'].apply(classify_time_period).astype('category')
+    df_feat['time_of_day'] = df_feat['dephour'].apply(
+        classify_time_period).astype('category')
 
-    print(f"✅ Features temporais criadas: ['dephour', 'is_weekend', 'quarter', 'time_of_day']")
+    print(
+        "✅ Features temporais criadas: ['dephour', 'is_weekend', 'quarter', 'time_of_day']")
 
     return df_feat
 
@@ -111,32 +121,33 @@ def criar_features_historicas(df, delay_col='ArrDelay15'):
 
     # VALIDAÇÃO CRÍTICA
     if 'FlightDate' not in df_feat.columns:
-        raise ValueError("❌ Coluna 'FlightDate' não encontrada! Obrigatória para features históricas.")
+        raise ValueError(
+            "❌ Coluna 'FlightDate' não encontrada! Obrigatória para features históricas.")
 
     # Ordenar por data ANTES de tudo
     df_feat = df_feat.sort_values('FlightDate').reset_index(drop=True)
     print("📅 Dataset ordenado por FlightDate (obrigatório para evitar data leakage)")
 
     # 1. Taxa de atraso por aeroporto (rolling com shift)
-    df_feat['origin_delay_rate'] = df_feat.groupby('Origin')[delay_col].transform(
-        lambda x: x.shift(1).expanding().mean()
-    )
+    df_feat['origin_delay_rate'] = df_feat.groupby(
+        'Origin')[delay_col].transform(lambda x: x.shift(1).expanding().mean())
 
     # 2. Taxa de atraso por companhia (rolling com shift)
-    df_feat['carrier_delay_rate'] = df_feat.groupby('Airline')[delay_col].transform(
-        lambda x: x.shift(1).expanding().mean()
-    )
+    df_feat['carrier_delay_rate'] = df_feat.groupby(
+        'Airline')[delay_col].transform(lambda x: x.shift(1).expanding().mean())
 
     # 3. Congestionamento acumulado (até o dia anterior)
-    df_feat['origin_traffic'] = df_feat.groupby(['Origin', 'FlightDate']).cumcount().astype('int16')
+    df_feat['origin_traffic'] = df_feat.groupby(
+        ['Origin', 'FlightDate']).cumcount().astype('int16')
 
     # Preencher NaNs iniciais com média global
     global_mean = df_feat[delay_col].mean()
     df_feat['origin_delay_rate'].fillna(global_mean, inplace=True)
     df_feat['carrier_delay_rate'].fillna(global_mean, inplace=True)
 
-    print(f"✅ Features históricas criadas: ['origin_delay_rate', 'carrier_delay_rate', 'origin_traffic']")
-    print(f"🛡️ Data leakage evitado através de shift(1) temporal!")
-    print(f"📊 Valores iniciais NaN preenchidos com média global: {global_mean:.4f}")
+    print("✅ Features históricas criadas: "
+          "['origin_delay_rate', 'carrier_delay_rate', 'origin_traffic']")
+    print("🛡️ Data leakage evitado através de shift(1) temporal!")
+    print(f"📊 NaN preenchidos com média global: {global_mean:.4f}")
 
     return df_feat
