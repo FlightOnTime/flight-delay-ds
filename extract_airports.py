@@ -56,7 +56,10 @@ try:
         print(f"📄 Arquivo salvo em: {output_path}")
         print(f"📋 Primeiros 10: {valid_airports[:10]}")
     else:
-        print("❌ O arquivo carregou, mas a estrutura não é a esperada (não encontrou a chave 'Origin').")
+        print(
+            "❌ O arquivo carregou, mas a estrutura não é a esperada "
+            "(não encontrou a chave 'Origin')."
+        )
         print(f"Conteúdo encontrado: {type(encoders)}")
 except Exception as e:
     print(f"❌ Erro ao processar os dados: {e}")
