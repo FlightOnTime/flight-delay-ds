@@ -1,0 +1,56 @@
+{
+  "valid_carriers": [
+    {
+      "code": "AA",
+      "name": "American Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "DL",
+      "name": "Delta Air Lines",
+      "country": "USA"
+    },
+    {
+      "code": "UA",
+      "name": "United Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "WN",
+      "name": "Southwest Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "B6",
+      "name": "JetBlue Airways",
+      "country": "USA"
+    },
+    {
+      "code": "AS",
+      "name": "Alaska Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "NK",
+      "name": "Spirit Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "F9",
+      "name": "Frontier Airlines",
+      "country": "USA"
+    },
+    {
+      "code": "G4",
+      "name": "Allegiant Air",
+      "country": "USA"
+    },
+    {
+      "code": "HA",
+      "name": "Hawaiian Airlines",
+      "country": "USA"
+    }
+  ],
+  "total_count": 10,
+  "last_updated": "2025-12-18"
+}

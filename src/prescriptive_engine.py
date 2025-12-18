@@ -39,7 +39,8 @@ def gerar_output_prescritivo(
     # Top features globais (ordenadas por importância)
     top_features = sorted(
         feature_importance_dict.items(),
-        key=lambda x: x[1],  # Corrigido para x[1] para obter o valor da importância
+        key=lambda x: x[1],
+        # Corrigido para x[1] para obter o valor da importância
         reverse=True
     )[:top_n]
 

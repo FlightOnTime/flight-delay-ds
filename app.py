@@ -2,15 +2,18 @@
 FlightOnTime API - Sistema de Predição de Atrasos de Voos
 Versão: 7.0
 """
+from pydantic import BaseModel, Field, validator
+import re
+from datetime import datetime
 from typing import List, Optional
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 
 from src.model_utils import (load_encoders, load_feature_names, load_metadata,
                              load_model)
 # Importar módulos locais
-from src.preprocessing import (criar_features_temporais)
+from src.preprocessing import criar_features_temporais
 from src.prescriptive_engine import gerar_output_prescritivo
 
 # ============================
@@ -19,7 +22,10 @@ from src.prescriptive_engine import gerar_output_prescritivo
 app = FastAPI(
     title="FlightOnTime API",
     description="API de Predição de Atrasos de Voos com Recomendações Prescritivas",
-    version="7.0"
+    version="7.0",
+    docs_url="/v1/docs",            # Swagger UI
+    redoc_url="/v1/redoc",          # ReDoc
+    openapi_url="/v1/openapi.json"  # OpenAPI JSON
 )
 
 # Carregar artefatos uma vez ao iniciar (performance)
@@ -42,31 +48,103 @@ print(f"✅ API inicializada! Threshold: {THRESHOLD:.4f}")
 # ============================
 # SCHEMAS DE ENTRADA/SAÍDA
 # ============================
+# ============================
+# NOVO SCHEMA COM VALIDAÇÕES
+# ============================
+
+
 class FlightInput(BaseModel):
     """
     Schema de entrada - Dados do voo para predição.
-
-    Formato JSON padrão (flexível para adaptação futura).
-    Campos obrigatórios baseados nas features do modelo.
+    Inclui validações rigorosas conforme regras de negócio.
     """
     # Features categóricas
-    Airline: str = Field(..., example="AA", description="Código da companhia aérea (ex: AA, DL, UA)")
-    Origin: str = Field(..., example="JFK", description="Aeroporto de origem (código IATA)")
-    Dest: str = Field(..., example="LAX", description="Aeroporto de destino (código IATA)")
+    Airline: str = Field(...,
+                         example="AA",
+                         description="Código da companhia aérea (2 letras maiúsculas)")
+    Origin: str = Field(..., example="JFK",
+                        description="Aeroporto de origem (3 letras maiúsculas)")
+    Dest: str = Field(..., example="LAX",
+                      description="Aeroporto de destino (3 letras maiúsculas)")
 
     # Features temporais
-    Month: int = Field(..., ge=1, le=12, example=12, description="Mês do voo (1-12)")
-    DayOfWeek: int = Field(..., ge=1, le=7, example=2, description="Dia da semana (1=Segunda, 7=Domingo)")
-    CRSDepTime: int = Field(..., ge=0, le=2359, example=1830, description="Hora programada de partida (HHMM)")
+    Month: int = Field(..., ge=1, le=12, example=12,
+                       description="Mês do voo (1-12)")
+    DayOfWeek: int = Field(..., ge=1, le=7, example=2,
+                           description="Dia da semana (1=Segunda, 7=Domingo)")
+    CRSDepTime: int = Field(...,
+                            ge=0,
+                            le=2359,
+                            example=1830,
+                            description="Hora programada de partida (HHMM)")
 
     # Features numéricas
-    Distance: int = Field(..., gt=0, example=2475, description="Distância do voo em milhas")
+    Distance: float = Field(...,
+                            gt=0,
+                            le=10000.0,
+                            example=2475.0,
+                            description="Distância do voo em milhas (máx 10000)")
 
-    # Features históricas (opcionais - calculadas internamente se não fornecidas)
+    # Features históricas (opcionais)
     origin_delay_rate: Optional[float] = Field(
-        None, example=0.21, description="Taxa histórica de atraso do aeroporto de origem")
-    carrier_delay_rate: Optional[float] = Field(None, example=0.18, description="Taxa histórica de atraso da companhia")
-    origin_traffic: Optional[int] = Field(None, example=150, description="Tráfego do aeroporto de origem")
+        None,
+        ge=0.0,
+        le=1.0,
+        example=0.21,
+        description="Taxa histórica de atraso do aeroporto")
+    carrier_delay_rate: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        example=0.18,
+        description="Taxa histórica de atraso da companhia")
+    origin_traffic: Optional[int] = Field(
+        None,
+        ge=0,
+        le=100000,
+        example=150,
+        description="Tráfego do aeroporto")
+
+    # --- VALIDAÇÕES PERSONALIZADAS ---
+
+    @validator('Airline')
+    def validate_airline(cls, v):
+        # Lista de carriers válidos (hardcoded para exemplo, ideal carregar de
+        # arquivo)
+        VALID_CARRIERS = [
+            "AA",
+            "DL",
+            "UA",
+            "WN",
+            "B6",
+            "AS",
+            "NK",
+            "F9",
+            "G4",
+            "HA"]
+
+        if not re.match(r'^[A-Z]{2}$', v):
+            raise ValueError("Airline code must be 2 uppercase letters")
+        if v not in VALID_CARRIERS:
+            raise ValueError(
+                f"Invalid carrier '{v}'. Allowed: {VALID_CARRIERS}")
+        return v
+
+    @validator('Origin', 'Dest')
+    def validate_airports(cls, v):
+        if not re.match(r'^[A-Z]{3}$', v):
+            raise ValueError(f"Airport code '{v}' must be 3 uppercase letters")
+        # Nota: Validação contra lista completa de 362 aeroportos pode ser pesada aqui,
+        # mas a validação de formato já barra "XX" ou minúsculas.
+        return v
+
+    @validator('CRSDepTime')
+    def validate_time_format(cls, v):
+        hours = v // 100
+        minutes = v % 100
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+            raise ValueError(f"Invalid time format: {v} (must be HHMM)")
+        return v
 
     class Config:
         json_schema_extra = {
@@ -77,7 +155,7 @@ class FlightInput(BaseModel):
                 "Month": 12,
                 "DayOfWeek": 2,
                 "CRSDepTime": 1830,
-                "Distance": 2475
+                "Distance": 2475.0
             }
         }
 
@@ -85,10 +163,14 @@ class FlightInput(BaseModel):
 class PredictionOutput(BaseModel):
     """Schema de saída - Predição com recomendações prescritivas"""
     previsao: str = Field(..., description="'Atrasado' ou 'Pontual'")
-    probabilidade_atraso: float = Field(..., description="Probabilidade de atraso (0.0 - 1.0)")
-    confianca: str = Field(..., description="'Muito Alta', 'Alta', 'Moderada' ou 'Baixa'")
-    principais_fatores: List[str] = Field(..., description="Top 3 features mais importantes")
-    recomendacoes: List[str] = Field(..., description="Ações operacionais recomendadas")
+    probabilidade_atraso: float = Field(...,
+                                        description="Probabilidade de atraso (0.0 - 1.0)")
+    confianca: str = Field(...,
+                           description="'Muito Alta', 'Alta', 'Moderada' ou 'Baixa'")
+    principais_fatores: List[str] = Field(...,
+                                          description="Top 3 features mais importantes")
+    recomendacoes: List[str] = Field(...,
+                                     description="Ações operacionais recomendadas")
 
 
 # ============================
@@ -112,7 +194,8 @@ def processar_features(flight_data: FlightInput) -> pd.DataFrame:
 
     # Usar features históricas fornecidas ou valores padrão
     if flight_data.origin_delay_rate is None:
-        df['origin_delay_rate'] = METADATA['metrics']['recall']  # Fallback: média global
+        # Fallback: média global
+        df['origin_delay_rate'] = METADATA['metrics']['recall']
     if flight_data.carrier_delay_rate is None:
         df['carrier_delay_rate'] = METADATA['metrics']['recall']
     if flight_data.origin_traffic is None:
@@ -139,8 +222,7 @@ def aplicar_encoders(df: pd.DataFrame) -> pd.DataFrame:
                 # Tratar valores desconhecidos (não vistos no treino)
                 known_classes = set(ENCODERS[col].classes_)
                 df_encoded[col] = df_encoded[col].apply(
-                    lambda x: x if x in known_classes else ENCODERS[col].classes_[0]
-                )
+                    lambda x: x if x in known_classes else ENCODERS[col].classes_[0])
                 df_encoded[col] = ENCODERS[col].transform(df_encoded[col])
             except Exception as e:
                 raise HTTPException(
@@ -170,13 +252,24 @@ def root():
 
 
 @app.get("/health")
+@app.get("/v1/health")
 def health_check():
     """Health check - Verifica se a API está funcionando"""
+    model_loaded = MODEL is not None
+    encoders_loaded = ENCODERS is not None
+
     return {
-        "status": "healthy",
-        "model_loaded": MODEL is not None,
-        "encoders_loaded": ENCODERS is not None,
-        "threshold": THRESHOLD
+        "status": "healthy" if (
+            model_loaded and encoders_loaded) else "unhealthy",
+        "model_loaded": model_loaded,
+        "encoders_loaded": encoders_loaded,
+        "model_version": METADATA.get(
+            "version",
+            "v7"),
+        "api_version": "7.0",
+        "threshold": THRESHOLD,
+        "timestamp": datetime.utcnow().isoformat() +
+        "Z",
     }
 
 
@@ -219,7 +312,8 @@ def predict(flight_data: FlightInput):
         X = df_encoded[FEATURE_NAMES["todas"]]
 
         # 4. Fazer predição
-        y_proba = MODEL.predict_proba(X)[:, 1]  # Probabilidade da classe "Atrasado"
+        # Probabilidade da classe "Atrasado"
+        y_proba = MODEL.predict_proba(X)[:, 1]
         y_pred = (y_proba >= THRESHOLD).astype(int)
 
         # 5. Gerar output prescritivo

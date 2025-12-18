@@ -59,4 +59,4 @@ jobs:
     
     - name: Executar flake8
       run: |
-        flake8 src/ app.py --max-line-length=120 --ignore=E501,W503,F541
+        flake8 src/ app.py 
