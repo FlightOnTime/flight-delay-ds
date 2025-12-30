@@ -30,6 +30,7 @@ app = FastAPI(
 
 # Carregar artefatos uma vez ao iniciar (performance)
 print("🔄 Carregando modelo e artefatos...")
+# Nota: Certifique-se que os caminhos dos modelos estão corretos no seu ambiente
 MODEL = load_model("models/randomforest_v7_final.pkl")
 ENCODERS = load_encoders("models/label_encoders_v7.pkl")
 METADATA = load_metadata("models/metadata_v7.json")
@@ -48,44 +49,36 @@ print(f"✅ API inicializada! Threshold: {THRESHOLD:.4f}")
 # ============================
 # SCHEMAS DE ENTRADA/SAÍDA
 # ============================
-# ============================
-# NOVO SCHEMA COM VALIDAÇÕES
-# ============================
-
 
 class FlightInput(BaseModel):
     """
-    Schema de entrada - Dados do voo para predição.
-    Inclui validações rigorosas conforme regras de negócio.
+    Schema de entrada - Híbrido.
+    Aceita os nomes do contrato (snake_case) e converte para
+    as variáveis internas do modelo (PascalCase).
     """
-    # Features categóricas
-    Airline: str = Field(...,
-                         example="AA",
+    # Features categóricas (com alias para aceitar o contrato da Cristielle)
+    Airline: str = Field(..., alias="carrier", example="AA",
                          description="Código da companhia aérea (2 letras maiúsculas)")
-    Origin: str = Field(..., example="JFK",
+    Origin: str = Field(..., alias="origin", example="JFK",
                         description="Aeroporto de origem (3 letras maiúsculas)")
-    Dest: str = Field(..., example="LAX",
+    Dest: str = Field(..., alias="dest", example="LAX",
                       description="Aeroporto de destino (3 letras maiúsculas)")
 
     # Features temporais
-    Month: int = Field(..., ge=1, le=12, example=12,
-                       description="Mês do voo (1-12)")
-    DayOfWeek: int = Field(..., ge=1, le=7, example=2,
+    # Month é obrigatório pro modelo, mas opcional no JSON de entrada (usa mês atual se faltar)
+    Month: int = Field(default_factory=lambda: datetime.now().month, ge=1, le=12,
+                       description="Mês do voo (1-12). Se omitido, usa mês atual.")
+    
+    DayOfWeek: int = Field(..., alias="day_of_week", ge=1, le=7, example=2,
                            description="Dia da semana (1=Segunda, 7=Domingo)")
-    CRSDepTime: int = Field(...,
-                            ge=0,
-                            le=2359,
-                            example=1830,
+    CRSDepTime: int = Field(..., alias="crs_dep_time", ge=0, le=2359, example=1830,
                             description="Hora programada de partida (HHMM)")
 
     # Features numéricas
-    Distance: float = Field(...,
-                            gt=0,
-                            le=10000.0,
-                            example=2475.0,
+    Distance: float = Field(..., alias="distance", gt=0, le=10000.0, example=2475.0,
                             description="Distância do voo em milhas (máx 10000)")
 
-    # Features históricas (opcionais)
+    # Features históricas (opcionais, já em snake_case)
     origin_delay_rate: Optional[float] = Field(
         None,
         ge=0.0,
@@ -109,19 +102,10 @@ class FlightInput(BaseModel):
 
     @validator('Airline')
     def validate_airline(cls, v):
-        # Lista de carriers válidos (hardcoded para exemplo, ideal carregar de
-        # arquivo)
+        # Adicionei 'LA' na lista para seus testes locais funcionarem também
         VALID_CARRIERS = [
-            "AA",
-            "DL",
-            "UA",
-            "WN",
-            "B6",
-            "AS",
-            "NK",
-            "F9",
-            "G4",
-            "HA"]
+            "AA", "DL", "UA", "WN", "B6", "AS", "NK", "F9", "G4", "HA", "LA"
+        ]
 
         if not re.match(r'^[A-Z]{2}$', v):
             raise ValueError("Airline code must be 2 uppercase letters")
@@ -134,8 +118,6 @@ class FlightInput(BaseModel):
     def validate_airports(cls, v):
         if not re.match(r'^[A-Z]{3}$', v):
             raise ValueError(f"Airport code '{v}' must be 3 uppercase letters")
-        # Nota: Validação contra lista completa de 362 aeroportos pode ser pesada aqui,
-        # mas a validação de formato já barra "XX" ou minúsculas.
         return v
 
     @validator('CRSDepTime')
@@ -147,15 +129,19 @@ class FlightInput(BaseModel):
         return v
 
     class Config:
+        # Isso permite aceitar tanto "carrier" quanto "Airline" no JSON
+        allow_population_by_field_name = True
         json_schema_extra = {
             "example": {
-                "Airline": "AA",
-                "Origin": "JFK",
-                "Dest": "LAX",
-                "Month": 12,
-                "DayOfWeek": 2,
-                "CRSDepTime": 1830,
-                "Distance": 2475.0
+                "carrier": "AA",
+                "origin": "JFK",
+                "dest": "LAX",
+                "day_of_week": 2,
+                "crs_dep_time": 1830,
+                "distance": 2475.0,
+                "origin_delay_rate": 0.20,
+                "carrier_delay_rate": 0.18,
+                "origin_traffic": 45000
             }
         }
 
@@ -179,27 +165,21 @@ class PredictionOutput(BaseModel):
 def processar_features(flight_data: FlightInput) -> pd.DataFrame:
     """
     Processa dados de entrada e cria features necessárias.
-
-    Args:
-        flight_data: Dados do voo (JSON)
-
-    Returns:
-        DataFrame com features prontas para predição
     """
-    # Converter para DataFrame
-    df = pd.DataFrame([flight_data.dict()])
+    # Converter para DataFrame usando os nomes dos campos internos (by_alias=False)
+    # Isso garante que teremos 'Airline' e não 'carrier' no DataFrame
+    df = pd.DataFrame([flight_data.dict(by_alias=False)])
 
     # Criar features temporais
     df = criar_features_temporais(df)
 
     # Usar features históricas fornecidas ou valores padrão
     if flight_data.origin_delay_rate is None:
-        # Fallback: média global
         df['origin_delay_rate'] = METADATA['metrics']['recall']
     if flight_data.carrier_delay_rate is None:
         df['carrier_delay_rate'] = METADATA['metrics']['recall']
     if flight_data.origin_traffic is None:
-        df['origin_traffic'] = 100  # Valor padrão moderado
+        df['origin_traffic'] = 100 
 
     return df
 
@@ -207,19 +187,12 @@ def processar_features(flight_data: FlightInput) -> pd.DataFrame:
 def aplicar_encoders(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica LabelEncoders nas features categóricas.
-
-    Args:
-        df: DataFrame com features categóricas
-
-    Returns:
-        DataFrame com features encoded
     """
     df_encoded = df.copy()
 
     for col in FEATURE_NAMES["categoricas"]:
         if col in df_encoded.columns and col in ENCODERS:
             try:
-                # Tratar valores desconhecidos (não vistos no treino)
                 known_classes = set(ENCODERS[col].classes_)
                 df_encoded[col] = df_encoded[col].apply(
                     lambda x: x if x in known_classes else ENCODERS[col].classes_[0])
@@ -289,17 +262,12 @@ def model_info():
         }
     }
 
-
+# ROTA DUPLA: Aceita tanto /predict (legado) quanto /v1/predict (contrato Cristielle)
 @app.post("/predict", response_model=PredictionOutput)
+@app.post("/v1/predict", response_model=PredictionOutput)
 def predict(flight_data: FlightInput):
     """
     Endpoint principal - Predição de atraso com recomendações prescritivas.
-
-    Args:
-        flight_data: Dados do voo (JSON)
-
-    Returns:
-        Predição com probabilidade e recomendações
     """
     try:
         # 1. Processar features
@@ -312,7 +280,6 @@ def predict(flight_data: FlightInput):
         X = df_encoded[FEATURE_NAMES["todas"]]
 
         # 4. Fazer predição
-        # Probabilidade da classe "Atrasado"
         y_proba = MODEL.predict_proba(X)[:, 1]
         y_pred = (y_proba >= THRESHOLD).astype(int)
 
@@ -322,7 +289,7 @@ def predict(flight_data: FlightInput):
             y_proba=y_proba,
             feature_importance_dict=FEATURE_IMPORTANCE,
             top_n=3
-        )[0]  # Pegar primeira predição (batch size = 1)
+        )[0]
 
         # 6. Formatar resposta
         return PredictionOutput(
@@ -344,12 +311,6 @@ def predict(flight_data: FlightInput):
 def predict_batch(flights: List[FlightInput]):
     """
     Predição em lote - Processa múltiplos voos de uma vez.
-
-    Args:
-        flights: Lista de dados de voos
-
-    Returns:
-        Lista de predições
     """
     try:
         results = []
