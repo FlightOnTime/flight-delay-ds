@@ -8,6 +8,7 @@ import os
 import joblib
 import pandas as pd
 import uvicorn
+import traceback
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -76,6 +77,7 @@ except Exception as e:
     model = None
     encoders = {}
     OPTIMAL_THRESHOLD = 0.5
+    metadata = {}
 
 # ========================================
 # SCHEMAS
@@ -204,7 +206,6 @@ def predict_flight_delay(request: FlightRequest):
         }
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {str(e)}")
 
