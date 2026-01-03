@@ -5,12 +5,13 @@
 
 import json
 import os
-import joblib
-import pandas as pd
-import uvicorn
 import traceback
 from datetime import datetime
 from pathlib import Path
+
+import joblib
+import pandas as pd
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
 
@@ -37,15 +38,15 @@ METADATA_PATH = BASE_DIR / 'models' / 'metadata_v7.json'
 # ========================================
 try:
     print("🔄 Carregando modelo e artefatos...")
-    
+
     # Carregar modelo
     model = joblib.load(MODEL_PATH)
     print(f"✅ Modelo carregado: {type(model).__name__}")
-    
+
     # Carregar encoders
     encoders = joblib.load(ENCODERS_PATH)
     print(f"✅ Encoders carregados: {len(encoders)} variáveis categóricas")
-    
+
     # Carregar threshold otimizado
     if os.path.exists(THRESHOLD_PATH):
         with open(THRESHOLD_PATH, 'r') as f:
@@ -72,12 +73,13 @@ try:
 
 except Exception as e:
     print(f"❌ ERRO CRÍTICO ao inicializar: {e}")
-    # Não damos raise aqui para permitir que a API suba e reporte erro no /health, 
+    # Não damos raise aqui para permitir que a API suba e reporte erro no /health,
     # mas em produção o ideal seria falhar o deploy.
     model = None
     encoders = {}
     OPTIMAL_THRESHOLD = 0.5
     metadata = {}
+
 
 # ========================================
 # SCHEMAS
@@ -115,6 +117,7 @@ class FlightRequest(BaseModel):
             raise ValueError('DayOfWeek deve estar entre 1 e 7')
         return v
 
+
 # ========================================
 # FUNÇÕES AUXILIARES
 # ========================================
@@ -127,6 +130,7 @@ def get_time_of_day(h):
         return 'Evening'
     else:
         return 'Night'
+
 
 # ========================================
 # ENDPOINTS
@@ -142,7 +146,7 @@ def predict_flight_delay(request: FlightRequest):
             flight_date = datetime.strptime(request.flight_date, "%Y-%m-%d")
             month = flight_date.month
             quarter = (month - 1) // 3 + 1
-            
+
             dep_time_str = str(request.crs_dep_time).zfill(4)
             hour = int(dep_time_str[:2])
         except ValueError:
@@ -169,10 +173,10 @@ def predict_flight_delay(request: FlightRequest):
         }
 
         X = pd.DataFrame([features_dict])
-        
+
         # Ordem EXATA conforme feature_names_v7.json
         cols_order = [
-            'Month', 'DayOfWeek', 'dephour', 'is_weekend', 'quarter', 
+            'Month', 'DayOfWeek', 'dephour', 'is_weekend', 'quarter',
             'Distance', 'origin_delay_rate', 'carrier_delay_rate', 'origin_traffic',
             'Airline', 'Origin', 'Dest', 'time_of_day'
         ]
@@ -193,7 +197,7 @@ def predict_flight_delay(request: FlightRequest):
 
         # Predição
         probability = model.predict_proba(X)[0][1]
-        
+
         # Aplicar threshold otimizado
         prediction = 1 if probability >= OPTIMAL_THRESHOLD else 0
         result = "Atrasado" if prediction == 1 else "Pontual"
@@ -209,6 +213,7 @@ def predict_flight_delay(request: FlightRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {str(e)}")
 
+
 @app.get("/health")
 async def health_check():
     """Verifica se a API está funcionando"""
@@ -218,6 +223,7 @@ async def health_check():
         "threshold": OPTIMAL_THRESHOLD,
         "timestamp": datetime.now().isoformat()
     }
+
 
 @app.get("/model/info")
 async def model_info():
@@ -245,6 +251,7 @@ async def model_info():
 
     return info
 
+
 @app.get("/")
 async def root():
     return {
@@ -252,6 +259,7 @@ async def root():
         "status": "operational",
         "docs": "http://127.0.0.1:8000/docs"
     }
+
 
 if __name__ == "__main__":
     # MUDANÇA IMPORTANTE: Porta 8000 para evitar conflito com Spring Boot/Tomcat na 8080
