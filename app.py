@@ -1,335 +1,257 @@
-"""
-FlightOnTime API - Sistema de Predição de Atrasos de Voos
-Versão: 7.0
-"""
-from pydantic import BaseModel, Field, validator
-import re
-from datetime import datetime
-from typing import List, Optional
+# ========================================
+# FLIGHTONTIME API v2.0
+# Sistema de Previsão de Atrasos de Voos
+# ========================================
 
+import json
+import os
+import joblib
 import pandas as pd
+import uvicorn
+from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, field_validator
 
-from src.model_utils import (load_encoders, load_feature_names, load_metadata,
-                             load_model)
-# Importar módulos locais
-from src.preprocessing import criar_features_temporais
-from src.prescriptive_engine import gerar_output_prescritivo
-
-# ============================
-# CONFIGURAÇÃO GLOBAL
-# ============================
+# ========================================
+# INICIALIZAR FASTAPI
+# ========================================
 app = FastAPI(
     title="FlightOnTime API",
-    description="API de Predição de Atrasos de Voos com Recomendações Prescritivas",
-    version="7.0",
-    docs_url="/v1/docs",            # Swagger UI
-    redoc_url="/v1/redoc",          # ReDoc
-    openapi_url="/v1/openapi.json"  # OpenAPI JSON
+    description="Sistema de Previsão de Atrasos de Voos com ML",
+    version="2.0"
 )
 
-# Carregar artefatos uma vez ao iniciar (performance)
-print("🔄 Carregando modelo e artefatos...")
-# Nota: Certifique-se que os caminhos dos modelos estão corretos no seu ambiente
-MODEL = load_model("models/randomforest_v7_final.pkl")
-ENCODERS = load_encoders("models/label_encoders_v7.pkl")
-METADATA = load_metadata("models/metadata_v7.json")
-FEATURE_NAMES = load_feature_names("models/feature_names_v7.json")
-THRESHOLD = METADATA["optimal_threshold"]
+# ========================================
+# CONFIGURAÇÃO DE PATHS
+# ========================================
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / 'models' / 'randomforest_v7_final.pkl'
+ENCODERS_PATH = BASE_DIR / 'models' / 'label_encoders_v7.pkl'
+THRESHOLD_PATH = BASE_DIR / 'models' / 'optimal_threshold_v2.txt'
+METADATA_PATH = BASE_DIR / 'models' / 'metadata_v7.json'
 
-# Feature importance do modelo (para output prescritivo)
-FEATURE_IMPORTANCE = dict(zip(
-    FEATURE_NAMES["todas"],
-    MODEL.feature_importances_
-))
-
-print(f"✅ API inicializada! Threshold: {THRESHOLD:.4f}")
-
-
-# ============================
-# SCHEMAS DE ENTRADA/SAÍDA
-# ============================
-
-class FlightInput(BaseModel):
-    """
-    Schema de entrada - Híbrido.
-    Aceita os nomes do contrato (snake_case) e converte para
-    as variáveis internas do modelo (PascalCase).
-    """
-    # Features categóricas (com alias para aceitar o contrato da Cristielle)
-    Airline: str = Field(..., alias="carrier", example="AA",
-                         description="Código da companhia aérea (2 letras maiúsculas)")
-    Origin: str = Field(..., alias="origin", example="JFK",
-                        description="Aeroporto de origem (3 letras maiúsculas)")
-    Dest: str = Field(..., alias="dest", example="LAX",
-                      description="Aeroporto de destino (3 letras maiúsculas)")
-
-    # Features temporais
-    # Month é obrigatório pro modelo, mas opcional no JSON de entrada (usa mês atual se faltar)
-    Month: int = Field(default_factory=lambda: datetime.now().month, ge=1, le=12,
-                       description="Mês do voo (1-12). Se omitido, usa mês atual.")
+# ========================================
+# CARREGAR MODELO E ARTEFATOS
+# ========================================
+try:
+    print("🔄 Carregando modelo e artefatos...")
     
-    DayOfWeek: int = Field(..., alias="day_of_week", ge=1, le=7, example=2,
-                           description="Dia da semana (1=Segunda, 7=Domingo)")
-    CRSDepTime: int = Field(..., alias="crs_dep_time", ge=0, le=2359, example=1830,
-                            description="Hora programada de partida (HHMM)")
+    # Carregar modelo
+    model = joblib.load(MODEL_PATH)
+    print(f"✅ Modelo carregado: {type(model).__name__}")
+    
+    # Carregar encoders
+    encoders = joblib.load(ENCODERS_PATH)
+    print(f"✅ Encoders carregados: {len(encoders)} variáveis categóricas")
+    
+    # Carregar threshold otimizado
+    if os.path.exists(THRESHOLD_PATH):
+        with open(THRESHOLD_PATH, 'r') as f:
+            OPTIMAL_THRESHOLD = float(f.read().strip())
+        print(f"✅ Threshold otimizado carregado: {OPTIMAL_THRESHOLD:.3f}")
+    else:
+        OPTIMAL_THRESHOLD = 0.409  # Fallback
+        print(f"⚠️ Usando threshold default: {OPTIMAL_THRESHOLD:.3f}")
 
-    # Features numéricas
-    Distance: float = Field(..., alias="distance", gt=0, le=10000.0, example=2475.0,
-                            description="Distância do voo em milhas (máx 10000)")
+    # Carregar metadados (opcional)
+    metadata = {}
+    if os.path.exists(METADATA_PATH):
+        with open(METADATA_PATH, 'r') as f:
+            metadata = json.load(f)
+        version = metadata.get('version', 'N/A')
+        roc_auc = metadata.get('metrics', {}).get('roc_auc', 'N/A')
+        print(f"📊 Modelo v{version} | ROC-AUC: {roc_auc}")
+    else:
+        print("⚠️ Arquivo de metadados não encontrado.")
 
-    # Features históricas (opcionais, já em snake_case)
-    origin_delay_rate: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        example=0.21,
-        description="Taxa histórica de atraso do aeroporto")
-    carrier_delay_rate: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        example=0.18,
-        description="Taxa histórica de atraso da companhia")
-    origin_traffic: Optional[int] = Field(
-        None,
-        ge=0,
-        le=100000,
-        example=150,
-        description="Tráfego do aeroporto")
+    print("=" * 60)
+    print("🚀 API PRONTA NA PORTA 8000")
+    print("=" * 60)
 
-    # --- VALIDAÇÕES PERSONALIZADAS ---
+except Exception as e:
+    print(f"❌ ERRO CRÍTICO ao inicializar: {e}")
+    # Não damos raise aqui para permitir que a API suba e reporte erro no /health, 
+    # mas em produção o ideal seria falhar o deploy.
+    model = None
+    encoders = {}
+    OPTIMAL_THRESHOLD = 0.5
 
-    @validator('Airline')
-    def validate_airline(cls, v):
-        # Adicionei 'LA' na lista para seus testes locais funcionarem também
-        VALID_CARRIERS = [
-            "AA", "DL", "UA", "WN", "B6", "AS", "NK", "F9", "G4", "HA", "LA"
-        ]
+# ========================================
+# SCHEMAS
+# ========================================
+class FlightRequest(BaseModel):
+    airline: str
+    origin: str
+    dest: str
+    distance: float
+    day_of_week: int
+    flight_date: str
+    crs_dep_time: int
+    origin_delay_rate: float
+    carrier_delay_rate: float
+    origin_traffic: int
 
-        if not re.match(r'^[A-Z]{2}$', v):
-            raise ValueError("Airline code must be 2 uppercase letters")
-        if v not in VALID_CARRIERS:
-            raise ValueError(
-                f"Invalid carrier '{v}'. Allowed: {VALID_CARRIERS}")
+    @field_validator('origin_delay_rate', 'carrier_delay_rate')
+    @classmethod
+    def validate_rates(cls, v, info):
+        if not 0 <= v <= 1:
+            raise ValueError(f'{info.field_name} deve estar entre 0 e 1')
         return v
 
-    @validator('Origin', 'Dest')
-    def validate_airports(cls, v):
-        if not re.match(r'^[A-Z]{3}$', v):
-            raise ValueError(f"Airport code '{v}' must be 3 uppercase letters")
+    @field_validator('distance')
+    @classmethod
+    def validate_distance(cls, v):
+        if v <= 0:
+            raise ValueError('Distance deve ser positiva')
         return v
 
-    @validator('CRSDepTime')
-    def validate_time_format(cls, v):
-        hours = v // 100
-        minutes = v % 100
-        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
-            raise ValueError(f"Invalid time format: {v} (must be HHMM)")
+    @field_validator('day_of_week')
+    @classmethod
+    def validate_day(cls, v):
+        if not 1 <= v <= 7:
+            raise ValueError('DayOfWeek deve estar entre 1 e 7')
         return v
 
-    class Config:
-        # Isso permite aceitar tanto "carrier" quanto "Airline" no JSON
-        allow_population_by_field_name = True
-        json_schema_extra = {
-            "example": {
-                "carrier": "AA",
-                "origin": "JFK",
-                "dest": "LAX",
-                "day_of_week": 2,
-                "crs_dep_time": 1830,
-                "distance": 2475.0,
-                "origin_delay_rate": 0.20,
-                "carrier_delay_rate": 0.18,
-                "origin_traffic": 45000
-            }
-        }
-
-
-class PredictionOutput(BaseModel):
-    """Schema de saída - Predição com recomendações prescritivas"""
-    previsao: str = Field(..., description="'Atrasado' ou 'Pontual'")
-    probabilidade_atraso: float = Field(...,
-                                        description="Probabilidade de atraso (0.0 - 1.0)")
-    confianca: str = Field(...,
-                           description="'Muito Alta', 'Alta', 'Moderada' ou 'Baixa'")
-    principais_fatores: List[str] = Field(...,
-                                          description="Top 3 features mais importantes")
-    recomendacoes: List[str] = Field(...,
-                                     description="Ações operacionais recomendadas")
-
-
-# ============================
+# ========================================
 # FUNÇÕES AUXILIARES
-# ============================
-def processar_features(flight_data: FlightInput) -> pd.DataFrame:
-    """
-    Processa dados de entrada e cria features necessárias.
-    """
-    # Converter para DataFrame usando os nomes dos campos internos (by_alias=False)
-    # Isso garante que teremos 'Airline' e não 'carrier' no DataFrame
-    df = pd.DataFrame([flight_data.dict(by_alias=False)])
+# ========================================
+def get_time_of_day(h):
+    if 6 <= h < 12:
+        return 'Morning'
+    elif 12 <= h < 18:
+        return 'Afternoon'
+    elif 18 <= h < 22:
+        return 'Evening'
+    else:
+        return 'Night'
 
-    # Criar features temporais
-    df = criar_features_temporais(df)
+# ========================================
+# ENDPOINTS
+# ========================================
+@app.post("/predict")
+def predict_flight_delay(request: FlightRequest):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Modelo não carregado corretamente.")
 
-    # Usar features históricas fornecidas ou valores padrão
-    if flight_data.origin_delay_rate is None:
-        df['origin_delay_rate'] = METADATA['metrics']['recall']
-    if flight_data.carrier_delay_rate is None:
-        df['carrier_delay_rate'] = METADATA['metrics']['recall']
-    if flight_data.origin_traffic is None:
-        df['origin_traffic'] = 100 
+    try:
+        # 1. Tratamento de Data e Hora
+        try:
+            flight_date = datetime.strptime(request.flight_date, "%Y-%m-%d")
+            month = flight_date.month
+            quarter = (month - 1) // 3 + 1
+            
+            dep_time_str = str(request.crs_dep_time).zfill(4)
+            hour = int(dep_time_str[:2])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data ou horário inválido.")
 
-    return df
+        is_weekend = 1 if request.day_of_week >= 6 else 0
+        time_of_day = get_time_of_day(hour)
 
-
-def aplicar_encoders(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Aplica LabelEncoders nas features categóricas.
-    """
-    df_encoded = df.copy()
-
-    for col in FEATURE_NAMES["categoricas"]:
-        if col in df_encoded.columns and col in ENCODERS:
-            try:
-                known_classes = set(ENCODERS[col].classes_)
-                df_encoded[col] = df_encoded[col].apply(
-                    lambda x: x if x in known_classes else ENCODERS[col].classes_[0])
-                df_encoded[col] = ENCODERS[col].transform(df_encoded[col])
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Erro ao encodar coluna '{col}': {str(e)}"
-                )
-
-    return df_encoded
-
-
-# ============================
-# ENDPOINTS DA API
-# ============================
-@app.get("/")
-def root():
-    """Endpoint raiz - Informações da API"""
-    return {
-        "message": "FlightOnTime API v7.0",
-        "status": "online",
-        "model_version": METADATA["version"],
-        "endpoints": {
-            "health": "/health",
-            "predict": "/predict",
-            "model_info": "/model/info"
+        # 2. Construir Dicionário de Features (Voltando para 'dephour')
+        features_dict = {
+            'Airline': request.airline,
+            'Origin': request.origin,
+            'Dest': request.dest,
+            'Distance': request.distance,
+            'Month': month,
+            'DayOfWeek': request.day_of_week,
+            'dephour': hour,  # <--- Voltamos para o nome que o erro exigiu
+            'quarter': quarter,
+            'is_weekend': is_weekend,
+            'time_of_day': time_of_day,
+            'origin_delay_rate': request.origin_delay_rate,
+            'carrier_delay_rate': request.carrier_delay_rate,
+            'origin_traffic': request.origin_traffic
         }
-    }
 
+        X = pd.DataFrame([features_dict])
+        
+        # Ordem EXATA conforme feature_names_v7.json
+        cols_order = [
+            'Month', 'DayOfWeek', 'dephour', 'is_weekend', 'quarter', 
+            'Distance', 'origin_delay_rate', 'carrier_delay_rate', 'origin_traffic',
+            'Airline', 'Origin', 'Dest', 'time_of_day'
+        ]
+        # Garante que o DataFrame tenha as colunas nesta ordem antes da predição
+        X = X[cols_order]
+
+        # Codificação segura para evitar Erro 500 com novos nomes
+        categorical_cols = ['Airline', 'Origin', 'Dest', 'time_of_day']
+        for col in categorical_cols:
+            if col in encoders:
+                val = X.at[0, col]
+                # Verifica se o valor existe no treinamento
+                if val in encoders[col].classes_:
+                    X[col] = encoders[col].transform([val])[0]
+                else:
+                    # Valor padrão para dados desconhecidos
+                    X[col] = -1
+
+        # Predição
+        probability = model.predict_proba(X)[0][1]
+        
+        # Aplicar threshold otimizado
+        prediction = 1 if probability >= OPTIMAL_THRESHOLD else 0
+        result = "Atrasado" if prediction == 1 else "Pontual"
+
+        return {
+            "prediction": result,
+            "probability_delay": round(float(probability), 4),
+            "features_used": features_dict,
+            "threshold_used": OPTIMAL_THRESHOLD
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erro interno no servidor: {str(e)}")
 
 @app.get("/health")
-@app.get("/v1/health")
-def health_check():
-    """Health check - Verifica se a API está funcionando"""
-    model_loaded = MODEL is not None
-    encoders_loaded = ENCODERS is not None
-
+async def health_check():
+    """Verifica se a API está funcionando"""
     return {
-        "status": "healthy" if (
-            model_loaded and encoders_loaded) else "unhealthy",
-        "model_loaded": model_loaded,
-        "encoders_loaded": encoders_loaded,
-        "model_version": METADATA.get(
-            "version",
-            "v7"),
-        "api_version": "7.0",
-        "threshold": THRESHOLD,
-        "timestamp": datetime.utcnow().isoformat() +
-        "Z",
+        "status": "healthy",
+        "model_loaded": model is not None,
+        "threshold": OPTIMAL_THRESHOLD,
+        "timestamp": datetime.now().isoformat()
     }
 
-
 @app.get("/model/info")
-def model_info():
-    """Retorna informações do modelo treinado"""
-    return {
-        "version": METADATA["version"],
-        "timestamp": METADATA["timestamp"],
-        "metrics": METADATA["metrics"],
-        "business_metrics": METADATA["business_metrics"],
-        "optimal_threshold": THRESHOLD,
-        "features": {
-            "total": len(FEATURE_NAMES["todas"]),
-            "numericas": FEATURE_NAMES["numericas"],
-            "categoricas": FEATURE_NAMES["categoricas"]
+async def model_info():
+    """Retorna informações sobre o modelo em uso"""
+    info = {
+        "model_type": type(model).__name__ if model else "None",
+        "threshold": OPTIMAL_THRESHOLD,
+        "threshold_rationale": "Otimizado para custo-benefício (FN=$200, FP=$50)",
+        "expected_metrics": {
+            "recall": "38.3%",
+            "precision": "23.9%",
+            "accuracy": "69.9%",
+            "roc_auc": "0.625"
+        },
+        "prediction_distribution": {
+            "expected_delayed": "~26%",
+            "expected_on_time": "~74%"
         }
     }
 
-# ROTA DUPLA: Aceita tanto /predict (legado) quanto /v1/predict (contrato Cristielle)
-@app.post("/predict", response_model=PredictionOutput)
-@app.post("/v1/predict", response_model=PredictionOutput)
-def predict(flight_data: FlightInput):
-    """
-    Endpoint principal - Predição de atraso com recomendações prescritivas.
-    """
-    try:
-        # 1. Processar features
-        df = processar_features(flight_data)
+    # Adicionar metadados se existirem
+    if metadata:
+        info['model_version'] = metadata.get('version', 'N/A')
+        info['trained_date'] = metadata.get('timestamp', 'N/A')
 
-        # 2. Aplicar encoders
-        df_encoded = aplicar_encoders(df)
+    return info
 
-        # 3. Selecionar apenas features do modelo (na ordem correta)
-        X = df_encoded[FEATURE_NAMES["todas"]]
+@app.get("/")
+async def root():
+    return {
+        "message": "FlightOnTime API v2.0",
+        "status": "operational",
+        "docs": "http://127.0.0.1:8000/docs"
+    }
 
-        # 4. Fazer predição
-        y_proba = MODEL.predict_proba(X)[:, 1]
-        y_pred = (y_proba >= THRESHOLD).astype(int)
-
-        # 5. Gerar output prescritivo
-        output = gerar_output_prescritivo(
-            y_pred=y_pred,
-            y_proba=y_proba,
-            feature_importance_dict=FEATURE_IMPORTANCE,
-            top_n=3
-        )[0]
-
-        # 6. Formatar resposta
-        return PredictionOutput(
-            previsao=output["previsao"],
-            probabilidade_atraso=output["probabilidade_atraso"],
-            confianca=output["confianca"],
-            principais_fatores=output["principais_fatores"],
-            recomendacoes=output["recomendacoes"]
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao processar predição: {str(e)}"
-        )
-
-
-@app.post("/predict/batch")
-def predict_batch(flights: List[FlightInput]):
-    """
-    Predição em lote - Processa múltiplos voos de uma vez.
-    """
-    try:
-        results = []
-        for flight in flights:
-            result = predict(flight)
-            results.append(result.dict())
-
-        return {"predictions": results, "total": len(results)}
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao processar batch: {str(e)}"
-        )
-
-
-# ============================
-# EXECUÇÃO LOCAL
-# ============================
 if __name__ == "__main__":
-    import uvicorn
+    # MUDANÇA IMPORTANTE: Porta 8000 para evitar conflito com Spring Boot/Tomcat na 8080
     uvicorn.run(app, host="0.0.0.0", port=8000)
