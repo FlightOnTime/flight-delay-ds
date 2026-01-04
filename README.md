@@ -39,6 +39,7 @@
 
 ### Diferenciais
 
+✅ **Integração Simplificada (v2.1)**: Lógica de dados históricos encapsulada na API (Auto-Lookup)  
 ✅ **Sem Data Leakage**: Split temporal explícito + features históricas com `shift(1)`  
 ✅ **Otimização por Custo**: Threshold ajustado para minimizar custos operacionais (FN=$500, FP=$50)  
 ✅ **Output Prescritivo**: Recomendações automáticas baseadas em [Mosqueira et al. (2024)](https://www.sciencedirect.com/science/article/pii/S0957417423036849)  
@@ -61,14 +62,14 @@
 | Tipo | Features | Descrição |
 |------|----------|-----------|
 | **Temporais** | `dephour`, `is_weekend`, `quarter`, `time_of_day` | Padrões de horário e sazonalidade |
-| **Históricas** | `origin_delay_rate`, `carrier_delay_rate`, `origin_traffic` | Taxa de atraso histórica (com shift temporal) |
+| **Históricas** | `origin_delay_rate`, `carrier_delay_rate`, `origin_traffic` | *Injetadas automaticamente pela API via Lookup Table*  |
 | **Geográficas** | `Origin`, `Dest`, `Distance` | Rotas e distâncias |
 | **Operacionais** | `Airline`, `Month`, `DayOfWeek` | Companhia e calendário |
 
 ### API REST (FastAPI)
 
-- **Endpoint Principal**: `POST /predict` - Predição individual
-- **Batch Processing**: `POST /predict/batch` - Múltiplos voos
+- **Endpoint Principal**: `POST /predict` - Predição individual (Payload simplificado)
+- **Auto-Lookup**: Enriquecimento automático de dados históricos no backend DS
 - **Health Check**: `GET /health` - Status da API
 - **Documentação**: Swagger UI automático em `/docs`
 
@@ -83,27 +84,38 @@ graph LR
     C --> D[FastAPI<br/>REST API]
     D --> E[Backend Java<br/>Integração]
     E --> F[Usuários<br/>Companhias Aéreas]
-    
+    G[Lookup Tables<br/>JSON] -.-> D
+
     style A fill:#e1f5ff
     style C fill:#fff4e1
     style D fill:#e8f5e9
     style F fill:#f3e5f5
+    style G fill:#fff4e1
 ```
 
 ### Fluxo de Dados
 
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
-│  Ingestão   │───▶│ Pré-processa │───▶│ Treinamento │───▶│  Inferência  │
-│ (BTS 1.45GB)│    │   mento      │    │ (RF + opt)  │    │  (FastAPI)   │
-└─────────────┘    └──────────────┘    └─────────────┘    └──────────────┘
+```mermaid
+graph LR
+    %% Definição de Estilos
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef highlight fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+
+    %% Fluxo Principal
+    A[Ingestão<br/>BTS 1.45GB] --> B[Pré-processamento<br/>Downcast & Features]
+    B --> C[Treinamento<br/>RF + Otimiz. Custo]
+    C --> D{Lookup Table<br/>JSON}
+    D --> E[Inferência<br/>FastAPI]
+
+    %% Aplicando Estilos
+    class A,B,C,D,E highlight
 ```
 
 1. **Ingestão**: Download automático de 1.45GB do BTS via Google Drive
 2. **Pré-processamento**: Engenharia de features + downcast de memória (redução de 50%)
 3. **Treinamento**: Random Forest com otimização de threshold por custo
-4. **Inferência**: API recebe JSON → processa features → retorna predição prescritiva
-
+4. **Lookup Table**: Extração de médias históricas para arquivo JSON
+4. **Inferência**: API recebe dados básicos → injeta históricos (JSON) → processa features → retorna predição
 ---
 
 ## 📦 Instalação
@@ -166,7 +178,9 @@ uvicorn app:app --reload --host 0.0.0.0 --port 8000
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-#### Fazer Predição
+#### Fazer Predição (Novo Payload Simplificado)
+
+Não é mais necessário enviar taxas históricas (*_rate). A API gerencia isso internamente via lookup_tables.json.
 
 **Via curl:**
 
@@ -174,13 +188,13 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 curl -X POST "http://localhost:8000/predict" \
   -H "Content-Type: application/json" \
   -d '{
-    "Airline": "AA",
-    "Origin": "JFK",
-    "Dest": "LAX",
-    "Month": 12,
-    "DayOfWeek": 2,
-    "CRSDepTime": 1830,
-    "Distance": 2475
+    "airline": "AA",
+    "origin": "JFK",
+    "dest": "LAX",
+    "distance": 2475,
+    "day_of_week": 2,
+    "flight_date": "2023-12-12",
+    "crs_dep_time": 1830
   }'
 ```
 
@@ -192,13 +206,13 @@ import requests
 response = requests.post(
     "http://localhost:8000/predict",
     json={
-        "Airline": "AA",
-        "Origin": "JFK",
-        "Dest": "LAX",
-        "Month": 12,
-        "DayOfWeek": 2,
-        "CRSDepTime": 1830,
-        "Distance": 2475
+        "airline": "AA",
+        "origin": "JFK",
+        "dest": "LAX",
+        "distance": 2475,
+        "day_of_week": 2,
+        "flight_date": "2023-12-12",
+        "crs_dep_time": 1830
     }
 )
 
@@ -209,21 +223,13 @@ print(response.json())
 
 ```json
 {
-  "previsao": "Atrasado",
-  "probabilidade_atraso": 0.558,
-  "confianca": "Moderada",
-  "principais_fatores": [
-    "dephour: 27.3% de importância",
-    "carrier_delay_rate: 14.1% de importância",
-    "time_of_day: 13.5% de importância"
-  ],
-  "recomendacoes": [
-    "⚠️ Reclassificar voo como potencialmente atrasado",
-    "📢 Notificar passageiros com conexões (>2h)",
-    "🎯 Antecipar boarding em 10-15 minutos",
-    "🚪 Reservar gate alternativo",
-    "🔧 Realizar pré-voo com margem de tempo"
-  ]
+  "prediction": "Atrasado",
+  "probability_delay": 0.558,
+  "recommendation": "Alerta: Alto risco operacional",
+  "internal_metrics": {
+      "historical_origin_risk": 0.24,
+      "historical_carrier_risk": 0.18
+  }
 }
 ```
 
@@ -262,41 +268,7 @@ code notebooks/FlightOnTime.ipynb
 |--------|----------|-----------|
 | `GET` | `/` | Informações da API |
 | `GET` | `/health` | Health check |
-| `GET` | `/model/info` | Métricas e metadados do modelo |
-| `POST` | `/predict` | Predição individual |
-| `POST` | `/predict/batch` | Predição em lote |
-
-### Exemplo: Informações do Modelo
-
-```bash
-curl http://localhost:8000/model/info
-```
-
-**Resposta:**
-
-```json
-{
-  "version": "7.0",
-  "timestamp": "2025-12-16 20:51:46",
-  "metrics": {
-    "roc_auc": 0.6252,
-    "recall": 0.9428,
-    "precision": 0.1776,
-    "f1": 0.2989,
-    "accuracy": 0.2762
-  },
-  "business_metrics": {
-    "total_cost_usd": 117903300,
-    "roi_annual_usd": 237177000
-  },
-  "optimal_threshold": 0.2444,
-  "features": {
-    "total": 13,
-    "numericas": ["Month", "DayOfWeek", "dephour", "..."],
-    "categoricas": ["Airline", "Origin", "Dest", "time_of_day"]
-  }
-}
-```
+| `POST` | `/predict` | Predição individual (Auto-Lookup) |
 
 ---
 
@@ -310,6 +282,7 @@ flight-delay-ds/
 │   ├── label_encoders_v7.pkl
 │   ├── metadata_v7.json
 │   ├── feature_names_v7.json
+│   ├── lookup_tables.json        # [NOVO] Tabelas de médias históricas
 │   └── optimal_threshold_v7.txt
 ├── 📁 notebooks/                 # Jupyter Notebooks
 │   └── FlightOnTime.ipynb    # Notebook principal
