@@ -34,7 +34,7 @@ try:
     print("🔄 Inicializando API v2.1...")
     model = joblib.load(MODEL_PATH)
     encoders = joblib.load(ENCODERS_PATH)
-    
+
     # Carregar Lookup Tables
     if os.path.exists(LOOKUP_PATH):
         with open(LOOKUP_PATH, 'r') as f:
@@ -60,6 +60,8 @@ except Exception as e:
     OPTIMAL_THRESHOLD = 0.5
 
 # --- SCHEMA SIMPLIFICADO (Back-End Friendly) ---
+
+
 class FlightRequest(BaseModel):
     airline: str
     origin: str
@@ -73,20 +75,28 @@ class FlightRequest(BaseModel):
     @field_validator('distance')
     @classmethod
     def validate_distance(cls, v):
-        if v <= 0: raise ValueError('Distance deve ser positiva')
+        if v <= 0:
+            raise ValueError('Distance deve ser positiva')
         return v
 
     @field_validator('day_of_week')
     @classmethod
     def validate_day(cls, v):
-        if not 1 <= v <= 7: raise ValueError('DayOfWeek deve estar entre 1 e 7')
+        if not 1 <= v <= 7:
+            raise ValueError('DayOfWeek deve estar entre 1 e 7')
         return v
 
+
 def get_time_of_day(h):
-    if 6 <= h < 12: return 'Morning'
-    elif 12 <= h < 18: return 'Afternoon'
-    elif 18 <= h < 22: return 'Evening'
-    else: return 'Night'
+    if 6 <= h < 12:
+        return 'Morning'
+    elif 12 <= h < 18:
+        return 'Afternoon'
+    elif 18 <= h < 22:
+        return 'Evening'
+    else:
+        return 'Night'
+
 
 @app.post("/predict")
 def predict_flight_delay(request: FlightRequest):
@@ -105,7 +115,7 @@ def predict_flight_delay(request: FlightRequest):
 
         # 2. Lookup de Dados Históricos (Lógica Interna)
         defaults = lookup_tables.get("defaults", {})
-        
+
         origin_rate = lookup_tables.get("origin_delay_rate", {}).get(
             request.origin, defaults.get("origin_delay_rate", 0.195)
         )
@@ -134,7 +144,7 @@ def predict_flight_delay(request: FlightRequest):
         }
 
         X = pd.DataFrame([features])
-        
+
         # Codificação de Categóricas
         for col in ['Airline', 'Origin', 'Dest', 'time_of_day']:
             if col in encoders:
@@ -166,6 +176,7 @@ def predict_flight_delay(request: FlightRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
