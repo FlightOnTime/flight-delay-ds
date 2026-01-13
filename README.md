@@ -7,7 +7,7 @@
 
 **Sistema de Machine Learning para prever atrasos de voos domésticos nos EUA usando dados históricos de 2023-2024**
 
-[Documentação API](#-api-rest-fastapi) • [Instalação](#-instalação) • [Uso](#-uso-rápido) • [Métricas](#-métricas-do-modelo) • [Arquitetura](#-arquitetura)
+[Documentação API](#-api-rest-fastapi) • [Instalação](#-instalação) • [Uso](#-uso-rápido) • [Métricas](#-métricas-do-modelo) • [Arquitetura](#-arquitetura) • [Modelo Quântico](#%EF%B8%8F-comparação-modelo-clássico-vs-quântico)
 
 ---
 
@@ -22,6 +22,7 @@
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Métricas do Modelo](#-métricas-do-modelo)
 - [Metodologia](#-metodologia)
+- [Comparação Modelo Clássico vs Quântico](#%EF%B8%8F-comparação-modelo-clássico-vs-quântico)
 - [Contribuindo](#-contribuindo)
 
 ---
@@ -44,7 +45,8 @@
 ✅ **Otimização por Custo**: Threshold ajustado para minimizar custos operacionais (FN=$500, FP=$50)  
 ✅ **Output Prescritivo**: Recomendações automáticas baseadas em [Mosqueira et al. (2024)](https://www.sciencedirect.com/science/article/pii/S0957417423036849)  
 ✅ **API REST**: FastAPI pronta para integração com Backend Java  
-✅ **Reprodutibilidade 100%**: `RANDOM_STATE=42` + seeds fixos
+✅ **Reprodutibilidade 100%**: `RANDOM_STATE=42` + seeds fixos  
+✅ **Pesquisa Experimental**: Inclui modelo quântico variacional (VQC) para comparação
 
 ---
 
@@ -116,6 +118,7 @@ graph LR
 3. **Treinamento**: Random Forest com otimização de threshold por custo
 4. **Lookup Table**: Extração de médias históricas para arquivo JSON
 4. **Inferência**: API recebe dados básicos → injeta históricos (JSON) → processa features → retorna predição
+
 ---
 
 ## 📦 Instalação
@@ -285,12 +288,13 @@ flight-delay-ds/
 │   ├── lookup_tables.json        # [NOVO] Tabelas de médias históricas
 │   └── optimal_threshold_v7.txt
 ├── 📁 notebooks/                 # Jupyter Notebooks
-│   └── FlightOnTime.ipynb    # Notebook principal
+│   ├── FlightOnTime.ipynb        # Notebook principal
+│   └── QuantumFlightOnTime.ipynb  # Notebook Quântico             
 ├── 📁 src/                       # Código-fonte modular
 │   ├── __init__.py
-│   ├── preprocessing.py         # Feature engineering
-│   ├── prescriptive_engine.py   # Lógica prescritiva
-│   └── model_utils.py           # Carregamento de artefatos
+│   ├── preprocessing.py          # Feature engineering
+│   ├── prescriptive_engine.py    # Lógica prescritiva
+│   └── model_utils.py            # Carregamento de artefatos
 ├── 📁 tests/                     # Testes unitários (futura sprint)
 ├── 📁 reports/                   # Relatórios e visualizações
 ├── 📄 app.py                     # API FastAPI
@@ -371,6 +375,118 @@ Este projeto implementa práticas de:
 
 ---
 
+## ⚖️ Comparação Modelo Clássico vs Quântico
+
+Este projeto incluiu uma **análise comparativa experimental** entre o modelo clássico de produção (Random Forest) e um modelo quântico variacional (VQC - Variational Quantum Classifier) para avaliar o potencial da computação quântica em problemas reais de Machine Learning.
+
+### 🎯 Contexto do Problema
+
+O objetivo é prever se um voo sofrerá atraso maior ou igual a 15 minutos, um problema caracterizado por:
+
+- Grande volume de dados
+- Desbalanceamento de classes
+- Forte impacto operacional
+- Necessidade de robustez temporal
+
+---
+
+### 🧠 Visão Geral dos Modelos
+
+| Critério | Modelo Clássico | Modelo Quântico (VQC) |
+|--------|----------------|-----------------------|
+| Abordagem | Machine Learning Tradicional | Machine Learning Quântico |
+| Ambiente de execução | Computação clássica | Simulação quântica |
+| Volume de dados | Alto | Reduzido (subamostra) |
+| Tempo de treinamento | Baixo | Elevado |
+| Estabilidade | Alta | Sensível a inicializações |
+| Escalabilidade | Alta | Limitada |
+| Interpretabilidade | Alta | Limitada |
+| Maturidade | Consolidada | Experimental |
+
+---
+
+### 📊 Comparação de Métricas
+
+#### 🔵 Modelo Clássico (Produção)
+
+| Métrica | Valor |
+|-------|-------|
+| ROC-AUC | **0.6252** |
+| Recall | **94.28%** |
+| Precision | 17.76% |
+| F1-Score | 0.2989 |
+| Validação | TimeSeriesSplit |
+| Escala | Milhões de voos |
+
+> O modelo clássico prioriza **Recall**, reduzindo atrasos não detectados, com validação temporal robusta e foco em custo operacional.
+
+---
+
+#### ⚛️ Modelo Quântico (Experimental)
+
+| Métrica | Valor |
+|-------|-------|
+| ROC-AUC | **0.6410** |
+| Accuracy | 0.6220 |
+| Precision | 0.3217 |
+| Recall | 0.6916 |
+| Ambiente | Simulação (`default.qubit`) |
+| Escala | Subamostra |
+
+> Os resultados indicam potencial teórico, porém o modelo é limitado por simulação clássica, alto custo computacional e baixa escalabilidade.
+
+---
+
+### ⚙️ Comparação Técnica
+
+| Critério | Modelo Clássico | Modelo Quântico |
+|--------|----------------|----------------|
+| Tempo de Treinamento | ✅ Viável | ❌ Elevado |
+| Uso em Produção | ✅ Sim | ❌ Não |
+| Integração via API | ✅ FastAPI | ❌ Não |
+| Reprodutibilidade | ✅ Alta | ⚠️ Experimental |
+| Maturidade Tecnológica | ✅ Consolidada | ❌ Emergente |
+
+---
+
+### 📌 Escolha do Modelo Final
+
+> **Modelo escolhido para produção:** 🔵 **Modelo Clássico (Random Forest)**
+
+A escolha do modelo final foi baseada em um conjunto de **critérios técnicos, operacionais e práticos**, alinhados aos objetivos do projeto:
+
+- **Viabilidade operacional**: capacidade de ser utilizado em um cenário real
+- **Escalabilidade**: possibilidade de lidar com grandes volumes de dados
+- **Custo computacional**: tempo de treinamento e consumo de recursos
+- **Estabilidade e robustez**: comportamento consistente entre execuções
+- **Integração com sistemas**: facilidade de deploy e consumo via API
+- **Maturidade tecnológica**: disponibilidade de ferramentas estáveis e bem documentadas
+
+Embora o modelo quântico apresente resultados promissores em métricas específicas, ele ainda enfrenta limitações significativas relacionadas à simulação clássica, restrições de escala e alto custo computacional. Dessa forma, a decisão priorizou **robustez, confiabilidade e aplicabilidade prática**.
+
+---
+
+### 🤔 Qual é o Papel do Modelo Quântico?
+
+O modelo quântico foi mantido como uma **prova de conceito e ferramenta exploratória**, permitindo:
+
+- Exploração prática de Machine Learning Quântico
+- Comparação direta com modelos clássicos
+- Discussão realista sobre limitações atuais da tecnologia
+
+> ⚠️ **Importante**: o modelo quântico é executado em **simulação clássica**, não em hardware quântico real.
+
+---
+
+### 🏁 Conclusão da Comparação
+
+- 🔵 **Modelo Clássico**: escolhido para produção por ser robusto, escalável e aplicável  
+- ⚛️ **Modelo Quântico**: mantido como abordagem experimental e exploratória  
+
+Embora o modelo quântico represente uma abordagem inovadora e promissora, **o modelo clássico foi escolhido por apresentar melhor desempenho, maior estabilidade e viabilidade prática**. O uso do VQC reforça o caráter experimental do estudo e contribui para uma análise mais completa e crítica sobre o uso de computação quântica em problemas reais.
+
+---
+
 ## 🛠️ Desenvolvimento
 
 ### Instalar em Modo Desenvolvimento
@@ -434,4 +550,4 @@ MIT License - veja [LICENSE](LICENSE) para detalhes.
 
 **⭐ Se este projeto foi útil, deixe uma estrela no GitHub!**
 
-Made with ❤️ by FlightOnTime Team
+Made with ❤️ by NoDelayFlight Team
