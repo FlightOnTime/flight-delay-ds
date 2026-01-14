@@ -1,3 +1,3 @@
 # Contributors
 
-- Gilson Silva – Data Science / Engineering Support
+- Gilson Silva – Data Science / Software Engineer / DevOps
