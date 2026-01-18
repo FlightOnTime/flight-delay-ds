@@ -2,12 +2,12 @@
   {
     "indice_voo": 0,
     "previsao": "Atrasado",
-    "probabilidade_atraso": 0.558,
+    "probabilidade_atraso": 0.521,
     "confianca": "Moderada",
     "principais_fatores": [
-      "dephour: 27.3% de importância",
+      "dephour: 26.9% de importância",
       "carrier_delay_rate: 14.1% de importância",
-      "time_of_day: 13.5% de importância"
+      "time_of_day: 13.8% de importância"
     ],
     "recomendacoes": [
       "⚠️ Reclassificar voo como potencialmente atrasado",
@@ -20,12 +20,12 @@
   {
     "indice_voo": 1,
     "previsao": "Atrasado",
-    "probabilidade_atraso": 0.518,
+    "probabilidade_atraso": 0.512,
     "confianca": "Moderada",
     "principais_fatores": [
-      "dephour: 27.3% de importância",
+      "dephour: 26.9% de importância",
       "carrier_delay_rate: 14.1% de importância",
-      "time_of_day: 13.5% de importância"
+      "time_of_day: 13.8% de importância"
     ],
     "recomendacoes": [
       "⚠️ Reclassificar voo como potencialmente atrasado",
@@ -38,12 +38,12 @@
   {
     "indice_voo": 2,
     "previsao": "Atrasado",
-    "probabilidade_atraso": 0.479,
+    "probabilidade_atraso": 0.472,
     "confianca": "Baixa",
     "principais_fatores": [
-      "dephour: 27.3% de importância",
+      "dephour: 26.9% de importância",
       "carrier_delay_rate: 14.1% de importância",
-      "time_of_day: 13.5% de importância"
+      "time_of_day: 13.8% de importância"
     ],
     "recomendacoes": [
       "⚠️ Reclassificar voo como potencialmente atrasado",
@@ -56,12 +56,12 @@
   {
     "indice_voo": 3,
     "previsao": "Atrasado",
-    "probabilidade_atraso": 0.514,
+    "probabilidade_atraso": 0.53,
     "confianca": "Moderada",
     "principais_fatores": [
-      "dephour: 27.3% de importância",
+      "dephour: 26.9% de importância",
       "carrier_delay_rate: 14.1% de importância",
-      "time_of_day: 13.5% de importância"
+      "time_of_day: 13.8% de importância"
     ],
     "recomendacoes": [
       "⚠️ Reclassificar voo como potencialmente atrasado",
@@ -74,12 +74,12 @@
   {
     "indice_voo": 4,
     "previsao": "Atrasado",
-    "probabilidade_atraso": 0.264,
+    "probabilidade_atraso": 0.269,
     "confianca": "Baixa",
     "principais_fatores": [
-      "dephour: 27.3% de importância",
+      "dephour: 26.9% de importância",
       "carrier_delay_rate: 14.1% de importância",
-      "time_of_day: 13.5% de importância"
+      "time_of_day: 13.8% de importância"
     ],
     "recomendacoes": [
       "⚠️ Reclassificar voo como potencialmente atrasado",

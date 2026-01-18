@@ -1,7 +1,3 @@
-# ========================================
-# FLIGHTONTIME API v2.1
-# Sistema de Previsão de Atrasos de Voos
-# ========================================
 
 import json
 import os
@@ -13,7 +9,7 @@ import joblib
 import pandas as pd
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, field_validator
+from api.schemas.flights import FlightRequest
 
 app = FastAPI(
     title="FlightOnTime API",
@@ -21,7 +17,7 @@ app = FastAPI(
     version="2.1"
 )
 
-# --- CONFIGURAÇÃO DE PATHS ---
+
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / 'models' / 'randomforest_v7_final.pkl'
 ENCODERS_PATH = BASE_DIR / 'models' / 'label_encoders_v7.pkl'
@@ -29,13 +25,12 @@ THRESHOLD_PATH = BASE_DIR / 'models' / 'optimal_threshold_v2.txt'
 METADATA_PATH = BASE_DIR / 'models' / 'metadata_v7.json'
 LOOKUP_PATH = BASE_DIR / 'models' / 'lookup_tables.json'
 
-# --- CARREGAR ARTEFATOS ---
+
 try:
     print("🔄 Inicializando API v2.1...")
     model = joblib.load(MODEL_PATH)
     encoders = joblib.load(ENCODERS_PATH)
 
-    # Carregar Lookup Tables
     if os.path.exists(LOOKUP_PATH):
         with open(LOOKUP_PATH, 'r') as f:
             lookup_tables = json.load(f)
@@ -44,7 +39,6 @@ try:
         print("⚠️ Lookup Tables não encontradas! Usando defaults globais.")
         lookup_tables = {"defaults": {"origin_delay_rate": 0.2, "carrier_delay_rate": 0.2, "origin_traffic": 500}}
 
-    # Carregar Threshold
     if os.path.exists(THRESHOLD_PATH):
         with open(THRESHOLD_PATH, 'r') as f:
             OPTIMAL_THRESHOLD = float(f.read().strip())
@@ -59,33 +53,6 @@ except Exception as e:
     lookup_tables = {}
     OPTIMAL_THRESHOLD = 0.5
 
-# --- SCHEMA SIMPLIFICADO (Back-End Friendly) ---
-
-
-class FlightRequest(BaseModel):
-    airline: str
-    origin: str
-    dest: str
-    distance: float
-    day_of_week: int
-    flight_date: str
-    crs_dep_time: int
-    # Campos removidos: rates e traffic agora são internos
-
-    @field_validator('distance')
-    @classmethod
-    def validate_distance(cls, v):
-        if v <= 0:
-            raise ValueError('Distance deve ser positiva')
-        return v
-
-    @field_validator('day_of_week')
-    @classmethod
-    def validate_day(cls, v):
-        if not 1 <= v <= 7:
-            raise ValueError('DayOfWeek deve estar entre 1 e 7')
-        return v
-
 
 def get_time_of_day(h):
     if 6 <= h < 12:
@@ -97,14 +64,54 @@ def get_time_of_day(h):
     else:
         return 'Night'
 
+@app.get("/")
+async def root():
+    return {"ok": True}
+
+
+@app.get("/health")
+async def health():
+    
+    model_obj = globals().get('model', None)
+    encoders_obj = globals().get('encoders', None)
+    lookup_obj = globals().get('lookup_tables', None)
+    threshold = globals().get('OPTIMAL_THRESHOLD', None)
+
+    model_loaded = model_obj is not None and hasattr(model_obj, "predict_proba")
+    encoders_loaded = isinstance(encoders_obj, dict) and len(encoders_obj) > 0
+    lookup_loaded = isinstance(lookup_obj, dict) and len(lookup_obj) > 0
+    threshold_ok = isinstance(threshold, (float, int))
+
+    origin_count = len(lookup_obj.get('origin_delay_rate', {})) if isinstance(lookup_obj, dict) else 0
+    carrier_count = len(lookup_obj.get('carrier_delay_rate', {})) if isinstance(lookup_obj, dict) else 0
+
+    return {
+        "ok": bool(model_loaded and encoders_loaded),
+        "model": {
+            "loaded": bool(model_loaded),
+            "has_predict_proba": bool(model_obj is not None and hasattr(model_obj, "predict_proba"))
+        },
+        "encoders": {
+            "loaded": bool(encoders_loaded),
+            "count": len(encoders_obj) if isinstance(encoders_obj, dict) else 0
+        },
+        "lookup_tables": {
+            "loaded": bool(lookup_loaded),
+            "origin_count": origin_count,
+            "carrier_count": carrier_count
+        },
+        "optimal_threshold": float(threshold) if threshold_ok else None,
+        "model_file_exists": MODEL_PATH.exists()
+    }
+    
 
 @app.post("/predict")
-def predict_flight_delay(request: FlightRequest):
+async def predict_flight_delay(request: FlightRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Modelo indisponível")
 
     try:
-        # 1. Parse de Data e Hora
+        
         try:
             flight_date = datetime.strptime(request.flight_date, "%Y-%m-%d")
             month = flight_date.month
@@ -113,7 +120,6 @@ def predict_flight_delay(request: FlightRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Data ou horário inválido")
 
-        # 2. Lookup de Dados Históricos (Lógica Interna)
         defaults = lookup_tables.get("defaults", {})
 
         origin_rate = lookup_tables.get("origin_delay_rate", {}).get(
@@ -126,7 +132,6 @@ def predict_flight_delay(request: FlightRequest):
             request.origin, defaults.get("origin_traffic", 450)
         )
 
-        # 3. Montagem das Features
         features = {
             'Airline': request.airline,
             'Origin': request.origin,
@@ -145,13 +150,11 @@ def predict_flight_delay(request: FlightRequest):
 
         X = pd.DataFrame([features])
 
-        # Codificação de Categóricas
         for col in ['Airline', 'Origin', 'Dest', 'time_of_day']:
             if col in encoders:
                 val = X.at[0, col]
                 X[col] = encoders[col].transform([val])[0] if val in encoders[col].classes_ else -1
 
-        # Reordenar colunas conforme treino
         cols_order = [
             'Month', 'DayOfWeek', 'dephour', 'is_weekend', 'quarter',
             'Distance', 'origin_delay_rate', 'carrier_delay_rate', 'origin_traffic',
@@ -159,7 +162,6 @@ def predict_flight_delay(request: FlightRequest):
         ]
         X = X[cols_order]
 
-        # Predição
         proba = model.predict_proba(X)[0][1]
         prediction = 1 if proba >= OPTIMAL_THRESHOLD else 0
 
